@@ -1,15 +1,15 @@
 /* global __app_id */
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 
-// --- FIREBASE IMPORTS ---
+// 1. FIREBASE IMPORTS (Updated to include social auth providers)
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, 
-  onAuthStateChanged, 
-  GoogleAuthProvider,
-  GithubAuthProvider,
-  signInWithPopup,
-  signOut
+    getAuth, 
+    onAuthStateChanged, 
+    GoogleAuthProvider,
+    GithubAuthProvider,
+    signInWithPopup,
+    signOut
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -20,582 +20,538 @@ import {
   query, 
   addDoc, 
   serverTimestamp,
-  runTransaction,
-  orderBy,
-  where,
-  limit,
-  getDoc,
+  runTransaction, // <-- IMPORTANT: Added for atomic social counts
 } from 'firebase/firestore';
 
-// --- GLOBAL VARIABLES ---
+// Global variables provided by the Canvas environment (Only using __app_id for Firestore paths)
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'vercel-local-dev'; 
+// Sanitize the app ID to ensure it is a single, clean segment for Firestore path construction.
 const appId = rawAppId.split(/[\/\-]/)[0]; 
 
-// --- FIREBASE CONFIG (FIXED storageBucket) ---
+// --- USER'S FIREBASE CONFIGURATION (Using the hardcoded configuration provided previously) ---
 const customFirebaseConfig = {
-  apiKey: "AIzaSyBRyHQf2IWzPoOrm8UsgcdJvDIxEQR2G40",
-  authDomain: "asa1db.firebaseapp.com",
-  projectId: "asa1db",
-  storageBucket: "asa1db.appspot.com", // ✅ FIXED
-  messagingSenderId: "195882381688",
-  appId: "1:195882381688:web:b1d8e1f5a73e6b7c2d13b4"
+    apiKey: "AIzaSyBRyHQf2IWzPoOrm8UsgcdJvDIxEQR2G40",
+    authDomain: "asa1db.firebaseapp.com",
+    projectId: "asa1db",
+    storageBucket: "asa1db.firebasestorage.app",
+    messagingSenderId: "195882381688",
+    appId: "1:195882381688:web:b1d752c00c7a8740d0469b",
 };
 
-// --- CONSTANTS ---
-const HEADER_HEIGHT = 60;
-const NAV_HEIGHT = 60;
+// 2. FIREBASE INITIALIZATION AND CONTEXT
+const app = initializeApp(customFirebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
 
-// --- FIREBASE INITIALIZATION ---
-let firebaseApp, db, auth;
-let isFirebaseInitialized = false;
+// -----------------------------------------------------------
+// --- SHARED UI COMPONENTS ---
+// -----------------------------------------------------------
 
-const initFirebase = () => {
-  if (isFirebaseInitialized) return;
-  try {
-    firebaseApp = initializeApp(customFirebaseConfig);
-    db = getFirestore(firebaseApp);
-    auth = getAuth(firebaseApp);
-    isFirebaseInitialized = true;
-    console.log("Firebase initialized successfully.");
-  } catch (error) {
-    console.error("Error initializing Firebase:", error);
-  }
-};
-
-// --- UTILITY COMPONENTS ---
-const SystemModal = ({ message = "Authentication or operation in progress...", onClose }) => (
-  <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-    <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full text-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
-      <p className="text-gray-800 font-semibold">{message}</p>
-      {onClose && (
-        <button
-          onClick={onClose}
-          className="mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
-        >
-          Close
-        </button>
-      )}
-    </div>
-  </div>
-);
-
-// --- DATA STRUCTURES ---
-const defaultUserProfile = {
-  uid: '',
-  displayName: 'Guest User',
-  photoURL: '',
-  followerCount: 0,
-  followingCount: 0,
-  bio: 'A user on the platform.',
-};
-
-const defaultPost = {
-  id: '',
-  userId: '',
-  userName: 'Unknown',
-  userPhoto: '',
-  content: 'Default post content.',
-  timestamp: Date.now(),
-  likeCount: 0,
-  commentCount: 0,
-};
-
-// --- FIRESTORE HELPERS ---
-const getUserDocRef = (uid) => doc(db, 'artifacts', appId, 'users', uid, 'userProfile', 'data');
-const getLikesCollectionRef = (uid) => collection(db, 'artifacts', appId, 'users', uid, 'likes');
-const getPublicCollectionRef = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
-const POSTS_REF = getPublicCollectionRef('posts');
-
-// --- CONTENT COMPONENTS ---
-const HomeContent = ({ user, posts, userLikes, isLoading, handleLikePost }) => {
-  if (isLoading) return <div className="p-4 text-center text-gray-500">Loading feed...</div>;
-  if (posts.length === 0) return <div className="p-4 text-center text-gray-500">No posts yet. Be the first to post!</div>;
-
-  return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-2xl font-bold text-gray-800">Your Feed</h2>
-      {posts.map((post) => {
-        const isLiked = userLikes[post.id];
-        return (
-          <div key={post.id} className="bg-white p-4 rounded-xl shadow-lg border border-gray-100">
-            <div className="flex items-center mb-3">
-              <img 
-                src={post.userPhoto || 'https://placehold.co/40x40/ccc/fff?text=U'} 
-                alt={post.userName} 
-                className="w-10 h-10 rounded-full mr-3 object-cover"
-              />
-              <div>
-                <p className="font-semibold text-gray-800">{post.userName}</p>
-                <p className="text-xs text-gray-500">
-                  {new Date(post.timestamp).toLocaleString()}
-                </p>
-              </div>
-            </div>
-            <p className="text-gray-700 mb-4">{post.content}</p>
-            
-            <div className="flex justify-between items-center text-sm text-gray-500">
-              <span className="flex items-center space-x-1">
-                <span className="font-bold">{post.likeCount}</span> Likes
-              </span>
-              <button 
-                onClick={() => handleLikePost(post.id, isLiked)}
-                className={`flex items-center space-x-1 transition duration-200 ${isLiked ? 'text-red-500 font-bold' : 'text-gray-400 hover:text-red-500'}`}
-                disabled={!user}
-              >
-                {isLiked ? '❤️' : '🤍'}
-                <span>Like</span>
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
-
-const ChatList = () => (
-  <div className="p-4">
-    <h2 className="text-2xl font-bold text-gray-800 mb-4">Chats</h2>
-    <div className="bg-white p-4 rounded-xl shadow-lg text-gray-600">
-      <p>Chat functionality is coming soon! This is where your conversations will appear.</p>
-    </div>
-  </div>
-);
-
-const ProfileContent = ({ user, userProfile, handleSignOut }) => {
-  const profile = userProfile || defaultUserProfile;
-
-  return (
-    <div className="p-4 space-y-6">
-      <div className="bg-white p-6 rounded-xl shadow-2xl text-center">
-        <img 
-          src={profile.photoURL || 'https://placehold.co/100x100/3B82F6/fff?text=P'} 
-          alt={profile.displayName} 
-          className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-blue-500 shadow-md"
-        />
-        <h2 className="text-3xl font-extrabold text-gray-900">{profile.displayName}</h2>
-        <p className="text-sm text-gray-500 mb-4">User ID: <span className="text-xs font-mono break-all">{profile.uid || 'N/A'}</span></p>
-        <p className="text-gray-700 italic mb-6">"{profile.bio}"</p>
-        <div className="flex justify-around text-lg font-semibold border-t pt-4">
-          <div className="text-center">
-            <p className="text-blue-600">{profile.followerCount}</p>
-            <p className="text-gray-500 text-sm">Followers</p>
-          </div>
-          <div className="text-center">
-            <p className="text-blue-600">{profile.followingCount}</p>
-            <p className="text-gray-500 text-sm">Following</p>
-          </div>
-        </div>
-      </div>
-      
-      {user && (
-        <button 
-          onClick={handleSignOut}
-          className="w-full flex items-center justify-center px-4 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition duration-150"
-        >
-          <span className="mr-2 text-xl">👋</span>
-          Sign Out
-        </button>
-      )}
-      {!user && (
-        <p className="text-center text-gray-500 p-4 bg-gray-100 rounded-xl">
-          Sign in to manage your profile!
-        </p>
-      )}
-    </div>
-  );
-};
-// --- POST CREATOR ---
-const PostCreator = ({ user, userProfile }) => {
-  const [content, setContent] = useState('');
-  const [isPosting, setIsPosting] = useState(false);
-  const [error, setError] = useState('');
-
-  const handlePost = async () => {
-    if (!user || !userProfile || isPosting || content.trim() === '') {
-      setError('Please sign in and enter some content.');
-      return;
-    }
-    
-    setIsPosting(true);
-    setError('');
-
-    try {
-      const newPost = {
-        userId: user.uid,
-        userName: userProfile.displayName || 'Anonymous',
-        userPhoto: userProfile.photoURL || '',
-        content: content.trim(),
-        timestamp: serverTimestamp(),
-        likeCount: 0,
-        commentCount: 0,
-      };
-
-      await addDoc(POSTS_REF, newPost);
-      setContent('');
-    } catch (e) {
-      console.error("Error adding document: ", e);
-      setError('Failed to create post. Please try again.');
-    } finally {
-      setIsPosting(false);
-    }
-  };
-
-  if (!user) {
-    return (
-      <div className="p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-lg">
-        Please sign in to create a post.
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white p-4 rounded-xl shadow-lg mb-4">
-      <textarea
-        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
-        rows="3"
-        placeholder={`What's on your mind, ${userProfile.displayName || 'friend'}?`}
-        value={content}
-        onChange={(e) => {
-          setContent(e.target.value);
-          if (error) setError('');
-        }}
-        disabled={isPosting}
-      ></textarea>
-      {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-      <button
-        onClick={handlePost}
-        disabled={isPosting || content.trim() === ''}
-        className={`mt-3 w-full px-4 py-2 font-bold rounded-xl transition ${
-          isPosting || content.trim() === ''
-            ? 'bg-gray-400 cursor-not-allowed'
-            : 'bg-green-500 text-white hover:bg-green-600 shadow-md'
-        }`}
-      >
-        {isPosting ? 'Posting...' : 'Post'}
-      </button>
-    </div>
-  );
-};
-
-// --- MAIN APP COMPONENT ---
-const App = () => {
-  const [activeTab, setActiveTab] = useState("home");
-  const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(defaultUserProfile);
-  const [posts, setPosts] = useState([]);
-  const [userLikes, setUserLikes] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [modalMessage, setModalMessage] = useState('');
-
-  // 1) Initialize Firebase and listen to auth
-  useEffect(() => {
-    initFirebase(); // Ensure db/auth are set before other effects
-    if (!auth) return;
-
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setIsLoading(false);
-
-      if (currentUser) {
-        await fetchOrCreateUserProfile(currentUser);
-      } else {
-        setUserProfile(defaultUserProfile);
-        setUserLikes({});
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // 2) Fetch Posts (run once after init; effect order ensures init runs first)
-  useEffect(() => {
-    if (!db || !isFirebaseInitialized) return;
-
-    const q = query(POSTS_REF, orderBy('timestamp', 'desc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedPosts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        timestamp: doc.data().timestamp?.toDate()?.getTime() || Date.now(),
-      }));
-      setPosts(fetchedPosts);
-    }, (error) => {
-      console.error("Error fetching posts:", error);
-    });
-
-    return () => unsubscribe();
-  }, []); // run once
-
-  // 3) Fetch User Likes when user changes
-  useEffect(() => {
-    if (!db || !user || !isFirebaseInitialized) return;
-
-    const likesRef = getLikesCollectionRef(user.uid);
-    const q = query(likesRef, where('liked', '==', true));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const likesMap = {};
-      snapshot.docs.forEach(doc => {
-        likesMap[doc.id] = true;
-      });
-      setUserLikes(likesMap);
-    }, (error) => {
-      console.error("Error fetching user likes:", error);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
-
-  // Auth helpers
-  const fetchOrCreateUserProfile = async (currentUser) => {
-    if (!db || !currentUser) return;
-
-    const profileRef = getUserDocRef(currentUser.uid);
-    try {
-      const docSnap = await getDoc(profileRef);
-
-      if (docSnap.exists()) {
-        const profileData = docSnap.data();
-        setUserProfile({
-          uid: currentUser.uid,
-          displayName: currentUser.displayName || profileData.displayName || 'New User',
-          photoURL: currentUser.photoURL || profileData.photoURL || '',
-          ...profileData,
-        });
-      } else {
-        const initialProfile = {
-          uid: currentUser.uid,
-          displayName: currentUser.displayName || 'New User',
-          photoURL: currentUser.photoURL || '',
-          followerCount: 0,
-          followingCount: 0,
-          bio: 'My first profile on this platform.',
-          createdAt: serverTimestamp(),
-        };
-        await setDoc(profileRef, initialProfile);
-        setUserProfile(initialProfile);
-      }
-    } catch (e) {
-      console.error("Error fetching/creating user profile:", e);
-      setUserProfile({ ...defaultUserProfile, uid: currentUser.uid });
-    }
-  };
-
-  const handleSignIn = async (providerName) => {
-    if (!auth) {
-      setModalMessage("Firebase Auth not initialized.");
-      setShowModal(true);
-      return;
-    }
-
-    const provider = providerName === 'google' 
-      ? new GoogleAuthProvider() 
-      : new GithubAuthProvider();
-
-    setModalMessage("Signing in...");
-    setShowModal(true);
-
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Sign-in error:", error);
-      setModalMessage(`Sign-in failed: ${error.message}`);
-    } finally {
-      setShowModal(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    if (!auth) return;
-    setModalMessage("Signing out...");
-    setShowModal(true);
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Sign-out error:", error);
-      setModalMessage(`Sign-out failed: ${error.message}`);
-    } finally {
-      setShowModal(false);
-    }
-  };
-
-  // Business logic
-  const handleLikePost = useCallback(async (postId, currentlyLiked) => {
-    if (!db || !user) {
-      setModalMessage("Please sign in to like posts.");
-      setShowModal(true);
-      setTimeout(() => setShowModal(false), 2000);
-      return;
-    }
-
-    const postRef = doc(POSTS_REF, postId);
-    const likeDocRef = doc(getLikesCollectionRef(user.uid), postId);
-    const delta = currentlyLiked ? -1 : 1;
-
-    try {
-      await runTransaction(db, async (transaction) => {
-        const postDoc = await transaction.get(postRef);
-        if (!postDoc.exists()) {
-          throw new Error("Post does not exist!");
-        }
-        const newLikeCount = (postDoc.data().likeCount || 0) + delta;
-        transaction.update(postRef, { likeCount: newLikeCount < 0 ? 0 : newLikeCount });
-
-        if (currentlyLiked) {
-          transaction.delete(likeDocRef);
-        } else {
-          transaction.set(likeDocRef, { liked: true, timestamp: serverTimestamp() });
-        }
-      });
-
-      setUserLikes(prev => {
-        const newLikes = { ...prev };
-        if (currentlyLiked) {
-          delete newLikes[postId];
-        } else {
-          newLikes[postId] = true;
-        }
-        return newLikes;
-      });
-
-    } catch (e) {
-      console.error("Transaction failed: ", e);
-      setModalMessage("Failed to update like count. Try again.");
-      setShowModal(true);
-      setTimeout(() => setShowModal(false), 2000);
-    }
-  }, [db, user]);
-
-  // Render content
-  const renderContent = () => {
-    if (isLoading) {
-      return <SystemModal message="Initializing and checking authentication..." />;
-    }
-    
-    if (!user) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full p-4">
-          <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Welcome to Your Social Feed</h1>
-          <p className="text-xl text-gray-600 mb-8 text-center">Sign in to start posting, liking, and chatting!</p>
-          <button 
-            onClick={() => handleSignIn('google')} 
-            className="w-full max-w-xs flex items-center justify-center px-4 py-3 mb-4 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition duration-150"
-          >
-            <span className="text-2xl mr-3">G</span> Sign in with Google
-          </button>
-          <button 
-            onClick={() => handleSignIn('github')} 
-            className="w-full max-w-xs flex items-center justify-center px-4 py-3 bg-gray-800 text-white font-bold rounded-xl shadow-lg hover:bg-gray-900 transition duration-150"
-          >
-            <span className="text-2xl mr-3">🐙</span> Sign in with GitHub
-          </button>
-        </div>
-      );
-    }
-
-    switch (activeTab) {
-      case 'home':
-        return (
-          <div className="pt-4 pb-4">
-            <PostCreator user={user} userProfile={userProfile} />
-            <HomeContent 
-              user={user}
-              posts={posts}
-              userLikes={userLikes}
-              isLoading={isLoading}
-              handleLikePost={handleLikePost}
-            />
-          </div>
-        );
-      case 'chats':
-        return <ChatList />;
-      case 'profile':
-        return <ProfileContent user={user} userProfile={userProfile} handleSignOut={handleSignOut} />;
-      default:
-        return (
-          <HomeContent 
-            user={user}
-            posts={posts}
-            userLikes={userLikes}
-            isLoading={isLoading}
-            handleLikePost={handleLikePost}
-          />
-        );
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex flex-col bg-gray-50 font-sans antialiased">
-      {/* Header */}
-      <header 
-        className="fixed top-0 left-0 w-full bg-white shadow-md z-10 flex items-center justify-between px-4"
-        style={{ height: `${HEADER_HEIGHT}px` }}
-      >
-        <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-yellow-500">
-          SocialHub
-        </h1>
-        <div className="flex items-center space-x-2">
-          <img 
-            src={userProfile.photoURL || 'https://placehold.co/30x30/ccc/fff?text=U'} 
-            alt="Profile" 
-            className="w-8 h-8 rounded-full object-cover border border-gray-300"
-          />
-          <span className="text-sm font-semibold text-gray-700 hidden sm:inline">{userProfile.displayName}</span>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main
-        className="flex-grow overflow-y-auto"
-        style={{
-          marginTop: `${HEADER_HEIGHT}px`,
-          marginBottom: `${NAV_HEIGHT}px`,
-          minHeight: `calc(100vh - ${HEADER_HEIGHT}px - ${NAV_HEIGHT}px)`
-        }}
-      >
-        <div className="max-w-xl mx-auto">
-          {renderContent()}
-        </div>
-      </main>
-
-      {/* System Modal */}
-      {showModal && (
-        <SystemModal 
-          message={modalMessage} 
-          onClose={modalMessage.includes('failed') ? () => setShowModal(false) : undefined} 
-        />
-      )}
-
-      {/* Bottom Navigation Bar */}
-      {user && (
-        <div
-          className="fixed bottom-0 left-0 w-full flex justify-around items-center text-white shadow-2xl"
-          style={{
-            background: "linear-gradient(to right, #006400, #FFD700, #8B0000)",
-            zIndex: 20, 
-            height: `${NAV_HEIGHT}px`,
-          }}
-        >
-          {[
-            { key: 'home', icon: '🏠', label: 'Home' },
-            { key: 'chats', icon: '💬', label: 'Chats' },
-            { key: 'profile', icon: '👤', label: 'Profile' },
-          ].map(({ key, icon, label }) => (
-            <div 
-              key={key}
-              onClick={() => setActiveTab(key)} 
-              className={`flex flex-col items-center justify-center p-1 cursor-pointer transition-opacity ${activeTab === key ? 'opacity-100 scale-110' : 'opacity-60 hover:opacity-80'}`}
+// SystemModal is a placeholder for custom dialogs (since alert() is forbidden)
+const SystemModal = ({ message = "An important message.", onClose }) => (
+    <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+        <div className="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border-t-4 border-yellow-400">
+            <h3 className="text-xl font-bold mb-3 text-yellow-400">System Alert</h3>
+            <p className="text-gray-300 mb-6">{message}</p>
+            <button
+                onClick={onClose}
+                className="w-full bg-yellow-600 hover:bg-yellow-700 text-black font-semibold py-2 rounded-lg transition"
             >
-              <span className="text-3xl leading-none">{icon}</span>
-              <span className="text-xs font-semibold">{label}</span>
-            </div>
-          ))}
+                Close
+            </button>
         </div>
-      )}
     </div>
-  );
+);
+
+// -----------------------------------------------------------
+// --- VIDEO FEED COMPONENTS (Replaced Dashboard) ---
+// -----------------------------------------------------------
+
+// Mock Video Data
+const mockVideos = [
+    // Using a common placeholder video URL for demonstration. In a real app, this would be ASA's content.
+    { id: 1, title: "ASA Product Launch (Swipe Up)", views: "1.2M", likes: "50k", duration: "0:58", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-red-900" },
+    { id: 2, title: "Q3 Financials Breakdown", views: "800k", likes: "35k", duration: "1:15", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-blue-900" },
+    { id: 3, title: "Behind the Scenes at ASA", views: "2.1M", likes: "120k", duration: "0:45", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-green-900" },
+    { id: 4, title: "New Feature Demo", views: "550k", likes: "28k", duration: "1:05", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-purple-900" },
+    { id: 5, title: "Team Culture Day", views: "1.5M", likes: "75k", duration: "0:50", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-yellow-900" },
+];
+
+const VideoPlayer = ({ video, isActive }) => {
+    const videoRef = useRef(null);
+    const [isPlaying, setIsPlaying] = useState(false); // Initial state set to false, controlled by useEffect
+
+    // EFFECT 1: Control play/pause based on visibility (the "swipe" mechanism)
+    useEffect(() => {
+        if (!videoRef.current) return;
+        
+        if (isActive) {
+            // Attempt to play only the active video (must be muted for autoplay)
+            videoRef.current.play().catch(e => {
+                // Suppress common errors related to play interruption/autoplay policy
+                if (e.name !== "NotAllowedError" && e.name !== "AbortError") {
+                    console.error("Video Playback Error:", e);
+                }
+            });
+            setIsPlaying(true);
+        } else {
+            // When inactive (out of view), always pause
+            videoRef.current.pause();
+            setIsPlaying(false);
+        }
+    }, [isActive]);
+
+
+    const togglePlay = () => {
+        if (!videoRef.current) return;
+
+        if (videoRef.current.paused) {
+            videoRef.current.play().catch(e => console.error("Manual Play Error:", e));
+            setIsPlaying(true);
+        } else {
+            videoRef.current.pause();
+            setIsPlaying(false);
+        }
+    };
+
+    return (
+        // Full screen height, centered content (p-0 for full video coverage)
+        <div className={`relative flex items-end justify-center h-full w-full p-0 overflow-hidden`}>
+            
+            {/* The Actual Video Player (fills container) */}
+            <video
+                ref={videoRef}
+                src={video.src}
+                className="absolute inset-0 w-full h-full object-cover"
+                autoPlay={false} // Autoplay controlled by the useEffect now
+                loop
+                muted // Muted required for initial un-prompted play
+                playsInline
+                onClick={togglePlay}
+                onError={(e) => {
+                    console.error("Video failed to load", e);
+                    // Fallback visual indicator if the placeholder fails
+                    if(videoRef.current) {
+                        videoRef.current.style.backgroundColor = video.color;
+                        videoRef.current.style.filter = 'grayscale(100%)';
+                    }
+                }}
+            >
+                Your browser does not support the video tag.
+            </video>
+
+            {/* Play/Pause Overlay Button */}
+            <div 
+                className="absolute inset-0 flex items-center justify-center cursor-pointer z-20"
+                onClick={togglePlay}
+            >
+                {!isPlaying && (
+                    <span className="text-white text-6xl opacity-90 transition-opacity p-4 rounded-full bg-black/50">
+                        ▶️
+                    </span>
+                )}
+            </div>
+
+            {/* Gradient Overlay for better text readability */}
+            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent z-10"></div>
+            
+            {/* Top Info (Title) */}
+            <div className="absolute top-6 left-6 right-6 z-30 text-white">
+                 <h1 className="text-3xl font-extrabold text-white drop-shadow-lg">{video.title}</h1>
+            </div>
+
+            {/* Action Buttons (Right Side) */}
+            {/* Adjusted bottom position to clear the info bar */}
+            <div className="absolute right-6 bottom-24 z-30 space-y-6"> 
+                <button onClick={() => console.log('Liked')} className="flex flex-col items-center text-red-400 hover:text-red-300 transition drop-shadow-lg">
+                    <span className="text-3xl">❤️</span>
+                    <span className="text-sm font-semibold">{video.likes}</span>
+                </button>
+                <button onClick={() => console.log('Commented')} className="flex flex-col items-center text-blue-400 hover:text-blue-300 transition drop-shadow-lg">
+                    <span className="text-3xl">💬</span>
+                    <span className="text-sm font-semibold">1.2k</span>
+                </button>
+                <button onClick={() => console.log('Shared')} className="flex flex-col items-center text-white hover:text-gray-300 transition drop-shadow-lg">
+                    <span className="text-3xl">🔗</span>
+                    <span className="text-sm font-semibold">Share</span>
+                </button>
+            </div>
+
+
+            {/* Bottom Info Bar (Left Side) - Now part of the bottom layer for good visibility */}
+            <div className="w-full z-30 text-white flex justify-between items-center px-6 pb-6 pt-3">
+                <p className="font-semibold text-xl drop-shadow-md">{video.views} Views</p>
+                <p className="text-md text-gray-300 drop-shadow-md">{video.duration} runtime</p>
+            </div>
+        </div>
+    );
 };
+
+
+const HomePage = () => {
+    const containerRef = useRef(null);
+    const [currentVideoIndex, setCurrentVideoIndex] = useState(0); 
+    
+    // Ref to hold drag state without triggering re-renders
+    const dragState = useRef({ isDown: false, startY: 0, scrollTop: 0 }); 
+
+    // Logic to track current video index based on scroll position
+    useEffect(() => {
+        const handleScroll = () => {
+            if (!containerRef.current) return;
+            
+            // Use requestAnimationFrame for smoother index tracking
+            let frameScheduled = false;
+
+            const updateIndex = () => {
+                 const scrollTop = containerRef.current.scrollTop;
+                 const height = containerRef.current.clientHeight;
+                 
+                 // Calculate which video is currently snapped 
+                 const newIndex = Math.round(scrollTop / height);
+                 
+                 if (newIndex !== currentVideoIndex) {
+                     setCurrentVideoIndex(newIndex);
+                 }
+                 frameScheduled = false;
+            };
+
+            if (!frameScheduled) {
+                requestAnimationFrame(updateIndex);
+                frameScheduled = true;
+            }
+        };
+
+        const container = containerRef.current;
+        if (container) {
+            // Ensure initial video (index 0) is playing
+            setCurrentVideoIndex(0); 
+            container.addEventListener('scroll', handleScroll);
+        }
+
+        return () => {
+            if (container) {
+                container.removeEventListener('scroll', handleScroll);
+            }
+        };
+    }, [currentVideoIndex]);
+
+    // --- MOUSE DRAG HANDLERS ---
+    const handleMouseDown = (e) => {
+        if (!containerRef.current) return;
+        dragState.current.isDown = true;
+        dragState.current.startY = e.pageY;
+        dragState.current.scrollTop = containerRef.current.scrollTop;
+        
+        // Change cursor to indicate dragging
+        containerRef.current.style.cursor = 'grabbing';
+        containerRef.current.style.userSelect = 'none'; // Prevent text selection
+    };
+
+    const handleMouseUp = () => {
+        if (!containerRef.current) return;
+        dragState.current.isDown = false;
+        containerRef.current.style.cursor = 'grab';
+        containerRef.current.style.userSelect = 'auto';
+    };
+
+    const handleMouseMove = (e) => {
+        if (!dragState.current.isDown) return;
+        e.preventDefault(); 
+        
+        const container = containerRef.current;
+        if (!container) return;
+
+        // Calculate how far the mouse has moved
+        const walk = e.pageY - dragState.current.startY; 
+        
+        // Apply the inverse movement to the scroll position 
+        // (Dragging down [positive walk] moves the content up [negative scroll change])
+        container.scrollTop = dragState.current.scrollTop - walk;
+    };
+    // ----------------------------
+
+
+    return (
+        // IMPORTANT: Added the drag handlers and the initial cursor style here.
+        <div 
+            ref={containerRef}
+            className="w-full h-[calc(100vh-68px)] overflow-y-scroll snap-y snap-mandatory scroll-smooth hide-scrollbar"
+            style={{ cursor: 'grab' }} 
+            onMouseDown={handleMouseDown}
+            onMouseLeave={handleMouseUp} // Stops dragging if the mouse leaves the container
+            onMouseUp={handleMouseUp}
+            onMouseMove={handleMouseMove}
+        >
+            {mockVideos.map((video, index) => (
+                // h-full and snap-start ensure each video fills the container and snaps into place
+                <div key={video.id} className="h-full snap-start flex-shrink-0">
+                    <VideoPlayer 
+                        video={video} 
+                        isActive={index === currentVideoIndex} // Pass isActive status
+                    />
+                </div>
+            ))}
+        </div>
+    );
+};
+
+// -----------------------------------------------------------
+// --- OTHER TAB CONTENT COMPONENTS (Adjusted for padding) ---
+// -----------------------------------------------------------
+
+const ChatsPage = () => (
+    // Added pb-20 padding to clear the fixed bottom navigation bar
+    <div className="p-6 pb-20"> 
+        <h2 className="text-3xl font-bold mb-4 text-yellow-400">Your Chats</h2>
+        <p className="text-gray-300">
+            Start a conversation with a friend from your contact list!
+        </p>
+        <div className="mt-6 space-y-4">
+            <ChatPreview name="Gemini AI" lastMessage="Ready to assist!" time="Now" />
+            <ChatPreview name="Alice" lastMessage="See you tomorrow." time="5m ago" />
+        </div>
+    </div>
+);
+
+const ChatPreview = ({ name, lastMessage, time }) => (
+    <div className="flex items-center p-3 bg-gray-800 rounded-xl hover:bg-gray-700 transition cursor-pointer">
+        <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-lg font-bold mr-4">
+            {name[0]}
+        </div>
+        <div className="flex-1">
+            <p className="text-white font-semibold">{name}</p>
+            <p className="text-sm text-gray-400 truncate">{lastMessage}</p>
+        </div>
+        <p className="text-xs text-gray-500">{time}</p>
+    </div>
+);
+
+const ProfilePage = ({ user, handleSignOut }) => (
+    // Added pb-20 padding to clear the fixed bottom navigation bar
+    <div className="p-6 pb-20">
+        <h2 className="text-3xl font-bold mb-6 text-red-400">User Profile</h2>
+        
+        {user ? (
+            <div className="space-y-4">
+                <div className="p-4 bg-gray-800 rounded-xl shadow-lg">
+                    <p className="text-gray-400">UID:</p>
+                    <p className="text-sm break-all text-white font-mono">{user.uid}</p>
+                </div>
+                <div className="p-4 bg-gray-800 rounded-xl shadow-lg">
+                    <p className="text-gray-400">Email:</p>
+                    <p className="text-white font-semibold">{user.email || 'N/A'}</p>
+                </div>
+                <div className="p-4 bg-gray-800 rounded-xl shadow-lg">
+                    <p className="text-gray-400">Display Name:</p>
+                    <p className="text-white font-semibold">{user.displayName || 'Anonymous User'}</p>
+                </div>
+                
+                <button 
+                    onClick={handleSignOut}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition mt-6"
+                >
+                    Sign Out
+                </button>
+            </div>
+        ) : (
+            <p className="text-gray-400">Loading user data...</p>
+        )}
+    </div>
+);
+
+// -----------------------------------------------------------
+// --- NEW CONTACT LIST PANEL COMPONENT ---
+// -----------------------------------------------------------
+
+const mockFriends = [
+    { id: 1, name: "Gemini AI", status: "Online", avatar: "🤖", statusColor: "bg-green-500" },
+    { id: 2, name: "Alice", status: "Offline", avatar: "👩", statusColor: "bg-gray-500" },
+    { id: 3, name: "Bob", status: "Online", avatar: "👨", statusColor: "bg-green-500" },
+    { id: 4, name: "Charlie", status: "Away", avatar: "🐻", statusColor: "bg-yellow-500" },
+    { id: 5, name: "Diana", status: "Online", avatar: "🦊", statusColor: "bg-green-500" },
+    { id: 6, name: "Eve", status: "Offline", avatar: "🦁", statusColor: "bg-gray-500" },
+    { id: 7, name: "Frank", status: "Online", avatar: "🦉", statusColor: "bg-green-500" },
+    // Add more to show scrolling
+    { id: 8, name: "Grace", status: "Online", avatar: "🦄", statusColor: "bg-green-500" },
+    { id: 9, name: "Henry", status: "Away", avatar: "🐺", statusColor: "bg-yellow-500" },
+    { id: 10, name: "Ivy", status: "Online", avatar: "🐲", statusColor: "bg-green-500" },
+];
+
+const ContactListItem = ({ friend }) => (
+    <div className="flex items-center p-2 rounded-lg hover:bg-gray-700 transition cursor-pointer">
+        <div className="relative mr-3">
+            <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-xl">
+                {friend.avatar}
+            </div>
+            {/* Status Indicator */}
+            <div className={`absolute bottom-0 right-0 w-3 h-3 ${friend.statusColor} rounded-full ring-2 ring-gray-900`}></div>
+        </div>
+        <div className="flex-1 min-w-0">
+            <p className="text-white font-semibold truncate">{friend.name}</p>
+            <p className="text-xs text-gray-400">{friend.status}</p>
+        </div>
+    </div>
+);
+
+const ContactListPanel = () => (
+    // This panel is hidden on mobile and shows on desktop (md:block)
+    // pb-20 to clear the bottom navigation bar if it's visible on desktop
+    <div className="hidden md:block w-72 bg-gray-900 border-l border-gray-700 h-full overflow-y-auto pt-6 pb-20">
+        <div className="px-4 mb-4">
+            <h3 className="text-xl font-bold text-yellow-400 border-b border-gray-700 pb-2">
+                Friends ({mockFriends.length})
+            </h3>
+        </div>
+        <div className="space-y-1 px-2">
+            {mockFriends.map(friend => (
+                <ContactListItem key={friend.id} friend={friend} />
+            ))}
+        </div>
+    </div>
+);
+
+
+// -----------------------------------------------------------
+// --- AUTH/MAIN APPLICATION COMPONENT ---
+// -----------------------------------------------------------
+
+const App = () => {
+    // Initial state set to 'home' to land on the new video feed
+    const [activeTab, setActiveTab] = useState("home"); 
+    const [user, setUser] = useState(null);
+    const [showModal, setShowModal] = useState(false);
+    const isAuthReady = useRef(false);
+
+    // 3. AUTH EFFECT
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (currentUser) {
+                setUser(currentUser);
+            } else {
+                // If not signed in, sign in anonymously for Firebase access
+                try {
+                    await auth.signInAnonymously();
+                } catch (error) {
+                    console.error("Anonymous sign-in failed:", error);
+                    // This is a major error, so we show a modal
+                    setShowModal(true);
+                }
+            }
+            isAuthReady.current = true;
+        });
+        return () => unsubscribe();
+    }, []);
+
+    // 4. HANDLERS
+    const handleSignOut = async () => {
+        try {
+            await signOut(auth);
+            setUser(null);
+            // After sign out, the onAuthStateChanged listener will trigger the anonymous sign-in
+        } catch (error) {
+            console.error("Error signing out:", error);
+        }
+    };
+
+    // 5. RENDER LOGIC
+    const renderContent = () => {
+        if (!isAuthReady.current) {
+            return (
+                <div className="flex-1 flex items-center justify-center text-white">
+                    <p>Loading application...</p>
+                </div>
+            );
+        }
+
+        switch (activeTab) {
+            case "home":
+                return <HomePage />;
+            case "chats":
+                return <ChatsPage />;
+            case "profile":
+                return <ProfilePage user={user} handleSignOut={handleSignOut} />;
+            default:
+                return null;
+        }
+    };
+
+    // Main App Layout 
+    return (
+        <>
+            {/* Inject CSS to hide the scrollbar for the video feed container */}
+            <style>{`
+                /* Hide scrollbar for Webkit browsers (Chrome, Safari) */
+                .hide-scrollbar::-webkit-scrollbar {
+                    display: none;
+                    width: 0;
+                    height: 0;
+                }
+                /* Hide scrollbar for Firefox and IE/Edge */
+                .hide-scrollbar {
+                    scrollbar-width: none;
+                    -ms-overflow-style: none;
+                }
+            `}</style>
+            
+            {/* Added max-h-screen and overflow-hidden to ensure full screen layout */}
+            <div className="h-screen w-screen flex flex-col bg-black text-white font-['Inter'] max-h-screen overflow-hidden">
+                
+                {/* Main Content & Right Panel Container */}
+                <div className="flex-1 flex overflow-hidden">
+                    
+                    {/* Left/Center Content (Existing Tab Content) */}
+                    <div className="flex-1 min-w-0">
+                        {renderContent()}
+                    </div>
+
+                    {/* Right Panel: Contact List */}
+                    <ContactListPanel />
+
+                </div>
+                
+                {showModal && <SystemModal onClose={() => setShowModal(false)} />}
+
+                {/* Fixed Bottom Navigation Bar (Visible on all screens) */}
+                <div
+                    className="fixed bottom-0 w-full flex justify-around items-center 
+                               bg-gray-900 border-t border-gray-700 text-white 
+                               p-3 font-semibold text-sm z-10 shadow-lg" 
+                >
+                    <TabButton 
+                        label="Feed" // UPDATED LABEL
+                        icon="🎬" // UPDATED ICON
+                        active={activeTab === 'home'} 
+                        onClick={() => setActiveTab("home")} 
+                    />
+                    <TabButton 
+                        label="Chats" 
+                        icon="💬" 
+                        active={activeTab === 'chats'} 
+                        onClick={() => setActiveTab("chats")} 
+                    />
+                    <TabButton 
+                        label="Profile" 
+                        icon="👤" 
+                        active={activeTab === 'profile'} 
+                        onClick={() => setActiveTab("profile")} 
+                    />
+                </div>
+            </div>
+        </>
+    );
+};
+
+// Helper component for bottom navigation
+const TabButton = ({ label, icon, active, onClick }) => (
+    <div 
+        onClick={onClick} 
+        className={`flex flex-col items-center cursor-pointer p-1 rounded-lg transition duration-200
+                   ${active ? 'text-blue-400 bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+    >
+        <span className="text-xl mb-1">{icon}</span>
+        <span className="text-xs">{label}</span>
+    </div>
+);
+
 export default App;
