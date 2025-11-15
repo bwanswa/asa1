@@ -24,6 +24,7 @@ import {
   orderBy,
   where,
   limit,
+  getDoc, // <--- ADDED: Fixes the 'getDoc is not defined' error
 } from 'firebase/firestore';
 
 // Global variables provided by the Canvas environment
