@@ -21,6 +21,8 @@ import {
   addDoc, 
   serverTimestamp,
   runTransaction, // <-- IMPORTANT: Added for atomic social counts
+  limit, // Added limit for chat query
+  orderBy, // Added orderBy for chat query (will sort in JS per instruction)
 } from 'firebase/firestore';
 
 // Global variables provided by the Canvas environment (Only using __app_id for Firestore paths)
@@ -35,523 +37,696 @@ const customFirebaseConfig = {
     projectId: "asa1db",
     storageBucket: "asa1db.firebasestorage.app",
     messagingSenderId: "195882381688",
-    appId: "1:195882381688:web:b1d752c00c7a8740d0469b",
+    appId: "1:195882381688:web:b12574044948f9df0f42b3",
 };
 
-// 2. FIREBASE INITIALIZATION AND CONTEXT
-const app = initializeApp(customFirebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+// Initialize Firebase
+const firebaseApp = initializeApp(customFirebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
-// -----------------------------------------------------------
-// --- SHARED UI COMPONENTS ---
-// -----------------------------------------------------------
+// --- UTILITIES & MOCK DATA ---
 
-// SystemModal is a placeholder for custom dialogs (since alert() is forbidden)
-const SystemModal = ({ message = "An important message.", onClose }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
-        <div className="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-sm w-full border-t-4 border-yellow-400">
-            <h3 className="text-xl font-bold mb-3 text-yellow-400">System Alert</h3>
-            <p className="text-gray-300 mb-6">{message}</p>
-            <button
-                onClick={onClose}
-                className="w-full bg-yellow-600 hover:bg-yellow-700 text-black font-semibold py-2 rounded-lg transition"
-            >
-                Close
-            </button>
-        </div>
-    </div>
-);
-
-// -----------------------------------------------------------
-// --- VIDEO FEED COMPONENTS (Replaced Dashboard) ---
-// -----------------------------------------------------------
-
-// Mock Video Data
-const mockVideos = [
-    // Using a common placeholder video URL for demonstration. In a real app, this would be ASA's content.
-    { id: 1, title: "ASA Product Launch (Swipe Up)", views: "1.2M", likes: "50k", duration: "0:58", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-red-900" },
-    { id: 2, title: "Q3 Financials Breakdown", views: "800k", likes: "35k", duration: "1:15", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-blue-900" },
-    { id: 3, title: "Behind the Scenes at ASA", views: "2.1M", likes: "120k", duration: "0:45", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-green-900" },
-    { id: 4, title: "New Feature Demo", views: "550k", likes: "28k", duration: "1:05", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-purple-900" },
-    { id: 5, title: "Team Culture Day", views: "1.5M", likes: "75k", duration: "0:50", src: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm", color: "bg-yellow-900" },
-];
-
-const VideoPlayer = ({ video, isActive }) => {
-    const videoRef = useRef(null);
-    const [isPlaying, setIsPlaying] = useState(false); // Initial state set to false, controlled by useEffect
-
-    // EFFECT 1: Control play/pause based on visibility (the "swipe" mechanism)
-    useEffect(() => {
-        if (!videoRef.current) return;
-        
-        if (isActive) {
-            // Attempt to play only the active video (must be muted for autoplay)
-            videoRef.current.play().catch(e => {
-                // Suppress common errors related to play interruption/autoplay policy
-                if (e.name !== "NotAllowedError" && e.name !== "AbortError") {
-                    console.error("Video Playback Error:", e);
-                }
-            });
-            setIsPlaying(true);
-        } else {
-            // When inactive (out of view), always pause
-            videoRef.current.pause();
-            setIsPlaying(false);
-        }
-    }, [isActive]);
-
-
-    const togglePlay = () => {
-        if (!videoRef.current) return;
-
-        if (videoRef.current.paused) {
-            videoRef.current.play().catch(e => console.error("Manual Play Error:", e));
-            setIsPlaying(true);
-        } else {
-            videoRef.current.pause();
-            setIsPlaying(false);
-        }
-    };
-
-    return (
-        // Full screen height, centered content (p-0 for full video coverage)
-        <div className={`relative flex items-end justify-center h-full w-full p-0 overflow-hidden`}>
-            
-            {/* The Actual Video Player (fills container) */}
-            <video
-                ref={videoRef}
-                src={video.src}
-                className="absolute inset-0 w-full h-full object-cover"
-                autoPlay={false} // Autoplay controlled by the useEffect now
-                loop
-                muted // Muted required for initial un-prompted play
-                playsInline
-                onClick={togglePlay}
-                onError={(e) => {
-                    console.error("Video failed to load", e);
-                    // Fallback visual indicator if the placeholder fails
-                    if(videoRef.current) {
-                        videoRef.current.style.backgroundColor = video.color;
-                        videoRef.current.style.filter = 'grayscale(100%)';
-                    }
-                }}
-            >
-                Your browser does not support the video tag.
-            </video>
-
-            {/* Play/Pause Overlay Button */}
-            <div 
-                className="absolute inset-0 flex items-center justify-center cursor-pointer z-20"
-                onClick={togglePlay}
-            >
-                {!isPlaying && (
-                    <span className="text-white text-6xl opacity-90 transition-opacity p-4 rounded-full bg-black/50">
-                        ▶️
-                    </span>
-                )}
-            </div>
-
-            {/* Gradient Overlay for better text readability */}
-            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/70 to-transparent z-10"></div>
-            
-            {/* Top Info (Title) */}
-            <div className="absolute top-6 left-6 right-6 z-30 text-white">
-                 <h1 className="text-3xl font-extrabold text-white drop-shadow-lg">{video.title}</h1>
-            </div>
-
-            {/* Action Buttons (Right Side) */}
-            {/* Adjusted bottom position to clear the info bar */}
-            <div className="absolute right-6 bottom-24 z-30 space-y-6"> 
-                <button onClick={() => console.log('Liked')} className="flex flex-col items-center text-red-400 hover:text-red-300 transition drop-shadow-lg">
-                    <span className="text-3xl">❤️</span>
-                    <span className="text-sm font-semibold">{video.likes}</span>
-                </button>
-                <button onClick={() => console.log('Commented')} className="flex flex-col items-center text-blue-400 hover:text-blue-300 transition drop-shadow-lg">
-                    <span className="text-3xl">💬</span>
-                    <span className="text-sm font-semibold">1.2k</span>
-                </button>
-                <button onClick={() => console.log('Shared')} className="flex flex-col items-center text-white hover:text-gray-300 transition drop-shadow-lg">
-                    <span className="text-3xl">🔗</span>
-                    <span className="text-sm font-semibold">Share</span>
-                </button>
-            </div>
-
-
-            {/* Bottom Info Bar (Left Side) - Now part of the bottom layer for good visibility */}
-            <div className="w-full z-30 text-white flex justify-between items-center px-6 pb-6 pt-3">
-                <p className="font-semibold text-xl drop-shadow-md">{video.views} Views</p>
-                <p className="text-md text-gray-300 drop-shadow-md">{video.duration} runtime</p>
-            </div>
-        </div>
-    );
+// Helper function to handle sign-in with a provider
+const handleSignIn = async (provider) => {
+    try {
+        await signInWithPopup(auth, provider);
+    } catch (error) {
+        console.error("Sign-in error:", error);
+    }
 };
 
+// --- CORE COMPONENTS ---
 
-const HomePage = () => {
-    const containerRef = useRef(null);
-    const [currentVideoIndex, setCurrentVideoIndex] = useState(0); 
+// 1. Home Screen (Now a Video Player)
+const HomeScreen = ({ userId, displayName, photoURL }) => {
+  // Videos for simulating the swipe experience (Updated to shorter clips)
+  const SAMPLE_VIDEOS = [
+    { 
+        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4", 
+        title: "Short Clip: Fun" 
+    },
+    { 
+        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", 
+        title: "Short Clip: Blazes" 
+    }
+  ];
+  
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const currentVideo = SAMPLE_VIDEOS[currentVideoIndex];
+  
+  // State for Touch (Mobile)
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  
+  // State for Mouse (PC)
+  const [mouseDownY, setMouseDownY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const MIN_SWIPE_DISTANCE = 50; // Minimum distance in pixels for a swipe to register
+
+  /**
+   * Calculates the new video index based on the swipe distance.
+   * Positive distance = Upward swipe (Next video)
+   * Negative distance = Downward swipe (Previous video)
+   */
+  const handleSwipe = (distance) => {
+    const totalVideos = SAMPLE_VIDEOS.length;
     
-    // Ref to hold drag state without triggering re-renders
-    const dragState = useRef({ isDown: false, startY: 0, scrollTop: 0 }); 
+    // Check for upward swipe (Next Video)
+    if (distance > MIN_SWIPE_DISTANCE) {
+      setCurrentVideoIndex(prevIndex => (prevIndex + 1) % totalVideos);
+      return true;
+    } 
+    // Check for downward swipe (Previous Video)
+    else if (distance < -MIN_SWIPE_DISTANCE) {
+      // Use modulus arithmetic to wrap around correctly for previous item
+      setCurrentVideoIndex(prevIndex => (prevIndex - 1 + totalVideos) % totalVideos);
+      return true;
+    }
+    return false;
+  };
 
-    // Logic to track current video index based on scroll position
-    useEffect(() => {
-        const handleScroll = () => {
-            if (!containerRef.current) return;
-            
-            // Use requestAnimationFrame for smoother index tracking
-            let frameScheduled = false;
+  // --- TOUCH HANDLERS (for mobile devices) ---
+  const handleTouchStart = (e) => {
+    setTouchStart(e.targetTouches[0].clientY);
+    setTouchEnd(e.targetTouches[0].clientY); 
+  };
 
-            const updateIndex = () => {
-                 const scrollTop = containerRef.current.scrollTop;
-                 const height = containerRef.current.clientHeight;
-                 
-                 // Calculate which video is currently snapped 
-                 const newIndex = Math.round(scrollTop / height);
-                 
-                 if (newIndex !== currentVideoIndex) {
-                     setCurrentVideoIndex(newIndex);
-                 }
-                 frameScheduled = false;
-            };
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientY);
+  };
 
-            if (!frameScheduled) {
-                requestAnimationFrame(updateIndex);
-                frameScheduled = true;
-            }
-        };
+  const handleTouchEnd = () => {
+    // Distance calculation: start Y - end Y. Positive = Upward, Negative = Downward.
+    const distance = touchStart - touchEnd;
+    handleSwipe(distance);
+  };
 
-        const container = containerRef.current;
-        if (container) {
-            // Ensure initial video (index 0) is playing
-            setCurrentVideoIndex(0); 
-            container.addEventListener('scroll', handleScroll);
-        }
+  // --- MOUSE HANDLERS (for PC/desktop devices) ---
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    setMouseDownY(e.clientY);
+  };
 
-        return () => {
-            if (container) {
-                container.removeEventListener('scroll', handleScroll);
-            }
-        };
-    }, [currentVideoIndex]);
+  const handleMouseMove = (e) => {
+    // Only track movement if currently dragging
+    if (isDragging) {
+      // We don't use this state for calculation, but it can be useful for debugging
+    }
+  };
 
-    // --- MOUSE DRAG HANDLERS ---
-    const handleMouseDown = (e) => {
-        if (!containerRef.current) return;
-        dragState.current.isDown = true;
-        dragState.current.startY = e.pageY;
-        dragState.current.scrollTop = containerRef.current.scrollTop;
-        
-        // Change cursor to indicate dragging
-        containerRef.current.style.cursor = 'grabbing';
-        containerRef.current.style.userSelect = 'none'; // Prevent text selection
+  const handleMouseUp = (e) => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    // Distance calculation: initial click Y - final release Y. Positive = Upward, Negative = Downward.
+    const distance = mouseDownY - e.clientY;
+    handleSwipe(distance);
+
+    // Reset state variables after calculation
+    setMouseDownY(0);
+  };
+
+  // Add global mouse up listener to stop drag even if released outside
+  useEffect(() => {
+    // This listener handles the case where the mouse is released outside the video container
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+        document.removeEventListener('mouseup', handleMouseUp);
     };
+  }, [isDragging, mouseDownY]);
 
-    const handleMouseUp = () => {
-        if (!containerRef.current) return;
-        dragState.current.isDown = false;
-        containerRef.current.style.cursor = 'grab';
-        containerRef.current.style.userSelect = 'auto';
-    };
 
-    const handleMouseMove = (e) => {
-        if (!dragState.current.isDown) return;
-        e.preventDefault(); 
+  const HEADER_HEIGHT = 50;
+  const NAV_HEIGHT = 50; 
+  const PADDING = 20;
+
+  return (
+    <div style={{ 
+      height: '100%', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      boxSizing: 'border-box',
+      // Ensure cursor changes on drag possibility
+      cursor: isDragging ? 'grabbing' : 'grab',
+    }}>
+      {/* Header for the video player screen (Fixed top) */}
+      <div style={{ 
+        position: 'fixed', 
+        top: 0, 
+        width: '100%', 
+        backgroundColor: '#333', 
+        color: 'white', 
+        padding: '10px 20px', 
+        textAlign: 'center',
+        boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+        zIndex: 10,
+        height: `${HEADER_HEIGHT}px`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <h2 style={{ margin: 0, fontSize: '1.4rem', color: '#FFD700' }}>🎬 ASA Media Player</h2>
+      </div>
+
+      {/* Video Content Area (Main swippable/resizable area) */}
+      <div 
+        // --- TOUCH EVENTS ---
+        onTouchStart={handleTouchStart} 
+        onTouchMove={handleTouchMove} 
+        onTouchEnd={handleTouchEnd}
+        // --- MOUSE EVENTS ---
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        // onMouseUp is handled globally via useEffect for robustness
         
-        const container = containerRef.current;
-        if (!container) return;
+        style={{ 
+          flex: 1, 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          backgroundColor: '#111',
+          paddingTop: `${HEADER_HEIGHT}px`,
+          paddingBottom: `${NAV_HEIGHT}px`,
+          overflow: 'hidden',
+          touchAction: 'none',
+          boxSizing: 'border-box',
+        }}
+      >
+        {/* Inner container for visual centering and padding */}
+        <div style={{ 
+            width: '100%', 
+            height: '100%', 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: `${PADDING}px`,
+            boxSizing: 'border-box',
+          }}>
+          <video 
+            controls 
+            autoPlay 
+            muted
+            style={{ 
+              maxWidth: '90%', 
+              maxHeight: '90%', 
+              width: 'auto', 
+              height: 'auto', 
+              borderRadius: '12px',
+              border: '3px solid #006400',
+              boxShadow: '0 0 20px rgba(0, 100, 0, 0.5)' 
+            }}
+            onError={(e) => {
+                e.target.style.display = 'none'; 
+                const container = e.target.parentElement;
+                if (container.querySelector('.video-error-message')) return;
+                
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'video-error-message';
+                errorDiv.innerHTML = '<h3 style="color:#FFD700; margin-bottom: 10px;">Video Stream Unavailable</h3><p style="color:#ccc;">Using a placeholder link. Please try another video source if needed.</p>';
+                errorDiv.style.textAlign = 'center';
+                errorDiv.style.padding = '20px';
+                errorDiv.style.backgroundColor = '#444';
+                errorDiv.style.borderRadius = '8px';
+                container.appendChild(errorDiv);
+            }}
+            key={currentVideo.url} // Key forces video component reload on URL change
+          >
+            <source src={currentVideo.url} type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
 
-        // Calculate how far the mouse has moved
-        const walk = e.pageY - dragState.current.startY; 
-        
-        // Apply the inverse movement to the scroll position 
-        // (Dragging down [positive walk] moves the content up [negative scroll change])
-        container.scrollTop = dragState.current.scrollTop - walk;
-    };
-    // ----------------------------
-
-
-    return (
-        // IMPORTANT: Added the drag handlers and the initial cursor style here.
-        <div 
-            ref={containerRef}
-            className="w-full h-[calc(100vh-68px)] overflow-y-scroll snap-y snap-mandatory scroll-smooth hide-scrollbar"
-            style={{ cursor: 'grab' }} 
-            onMouseDown={handleMouseDown}
-            onMouseLeave={handleMouseUp} // Stops dragging if the mouse leaves the container
-            onMouseUp={handleMouseUp}
-            onMouseMove={handleMouseMove}
-        >
-            {mockVideos.map((video, index) => (
-                // h-full and snap-start ensure each video fills the container and snaps into place
-                <div key={video.id} className="h-full snap-start flex-shrink-0">
-                    <VideoPlayer 
-                        video={video} 
-                        isActive={index === currentVideoIndex} // Pass isActive status
-                    />
-                </div>
-            ))}
+          {/* Control / Info Bar below the video */}
+          <div style={{ 
+            padding: '10px 20px', 
+            backgroundColor: '#222', 
+            color: 'white',
+            borderTop: '1px solid #444',
+            width: '90%',
+            maxWidth: '500px',
+            borderRadius: '0 0 12px 12px',
+            marginTop: '10px'
+          }}>
+            <p style={{ margin: 0, fontSize: '0.9rem', color: '#ccc', textAlign: 'center' }}>
+              Swipe up/down to watch next/previous
+            </p>
+          </div>
         </div>
-    );
+      </div>
+    </div>
+  );
 };
 
-// -----------------------------------------------------------
-// --- OTHER TAB CONTENT COMPONENTS (Adjusted for padding) ---
-// -----------------------------------------------------------
 
-const ChatsPage = () => (
-    // Added pb-20 padding to clear the fixed bottom navigation bar
-    <div className="p-6 pb-20"> 
-        <h2 className="text-3xl font-bold mb-4 text-yellow-400">Your Chats</h2>
-        <p className="text-gray-300">
-            Start a conversation with a friend from your contact list!
-        </p>
-        <div className="mt-6 space-y-4">
-            <ChatPreview name="Gemini AI" lastMessage="Ready to assist!" time="Now" />
-            <ChatPreview name="Alice" lastMessage="See you tomorrow." time="5m ago" />
-        </div>
-    </div>
-);
+// 2. Chat Screen
+const ChatScreen = ({ db, userId, displayName, photoURL }) => {
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef(null);
+  const chatCollectionPath = `artifacts/${appId}/public/data/globalChat`;
 
-const ChatPreview = ({ name, lastMessage, time }) => (
-    <div className="flex items-center p-3 bg-gray-800 rounded-xl hover:bg-gray-700 transition cursor-pointer">
-        <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-lg font-bold mr-4">
-            {name[0]}
-        </div>
-        <div className="flex-1">
-            <p className="text-white font-semibold">{name}</p>
-            <p className="text-sm text-gray-400 truncate">{lastMessage}</p>
-        </div>
-        <p className="text-xs text-gray-500">{time}</p>
-    </div>
-);
+  // Scroll to bottom effect
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-const ProfilePage = ({ user, handleSignOut }) => (
-    // Added pb-20 padding to clear the fixed bottom navigation bar
-    <div className="p-6 pb-20">
-        <h2 className="text-3xl font-bold mb-6 text-red-400">User Profile</h2>
-        
-        {user ? (
-            <div className="space-y-4">
-                <div className="p-4 bg-gray-800 rounded-xl shadow-lg">
-                    <p className="text-gray-400">UID:</p>
-                    <p className="text-sm break-all text-white font-mono">{user.uid}</p>
-                </div>
-                <div className="p-4 bg-gray-800 rounded-xl shadow-lg">
-                    <p className="text-gray-400">Email:</p>
-                    <p className="text-white font-semibold">{user.email || 'N/A'}</p>
-                </div>
-                <div className="p-4 bg-gray-800 rounded-xl shadow-lg">
-                    <p className="text-gray-400">Display Name:</p>
-                    <p className="text-white font-semibold">{user.displayName || 'Anonymous User'}</p>
-                </div>
-                
-                <button 
-                    onClick={handleSignOut}
-                    className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition mt-6"
-                >
-                    Sign Out
-                </button>
+  // Real-time message listener
+  useEffect(() => {
+    // 1. Create the query (using orderBy for later in-memory sort)
+    // NOTE: orderBy is used here only to indicate the desired sort direction; actual sorting will be done in JS
+    const q = query(collection(db, chatCollectionPath));
+    
+    // 2. Set up the snapshot listener
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedMessages = [];
+      snapshot.forEach((doc) => {
+        fetchedMessages.push({ ...doc.data(), id: doc.id });
+      });
+
+      // 3. Sort messages in JavaScript (since Firestore orderBy is discouraged here)
+      const sortedMessages = fetchedMessages.sort((a, b) => {
+        if (!a.timestamp) return 1;
+        if (!b.timestamp) return -1;
+        return a.timestamp.toDate().getTime() - b.timestamp.toDate().getTime();
+      });
+
+      setMessages(sortedMessages);
+    }, (error) => {
+      console.error("Firestore snapshot error:", error);
+    });
+
+    // 4. Clean up the listener on component unmount
+    return () => unsubscribe();
+  }, [db, chatCollectionPath]);
+
+  const sendMessage = async (e) => {
+    e.preventDefault();
+    if (newMessage.trim() === "" || !userId) return;
+
+    try {
+      await addDoc(collection(db, chatCollectionPath), {
+        text: newMessage,
+        timestamp: serverTimestamp(),
+        userId: userId,
+        userName: displayName || 'Anonymous',
+        userPhoto: photoURL || null,
+      });
+      setNewMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
+
+  // Chat bar is ~50px, Input bar is ~60px. Total offset for padding: 110px + gap (20px) = 130px.
+  // Header is 50px tall.
+  const HEADER_HEIGHT = 50;
+  const INPUT_HEIGHT = 60;
+  const NAV_HEIGHT = 50; 
+  const INPUT_BOTTOM_OFFSET = 50; // Position input 50px above screen bottom (where nav bar starts)
+  const TOTAL_BOTTOM_PADDING = NAV_HEIGHT + INPUT_HEIGHT + 10; // For scrollable area clearance
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header (Fixed) - UPDATED TITLE */}
+      <div style={{ 
+        position: 'fixed', 
+        top: 0, 
+        width: '100%', 
+        backgroundColor: '#333', 
+        color: '#FFD700', 
+        padding: '10px 20px', 
+        textAlign: 'center',
+        boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+        zIndex: 10,
+        height: `${HEADER_HEIGHT}px`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <h2 style={{ margin: 0, fontSize: '1.4rem' }}>⭐ ASA Global Chat ⭐</h2>
+      </div>
+
+      {/* Message List (Scrollable Content) */}
+      <div 
+        style={{ 
+          flex: 1, 
+          overflowY: 'auto', 
+          padding: '10px 20px',
+          paddingTop: `${HEADER_HEIGHT + 10}px`, // Offset for header
+          paddingBottom: `${TOTAL_BOTTOM_PADDING}px`, // Offset for input and nav
+        }}
+      >
+        {messages.map((msg) => (
+          <div 
+            key={msg.id} 
+            style={{
+              display: 'flex',
+              justifyContent: msg.userId === userId ? 'flex-end' : 'flex-start',
+              marginBottom: '10px',
+            }}
+          >
+            <div 
+              style={{
+                maxWidth: '70%',
+                backgroundColor: msg.userId === userId ? '#006400' : '#444',
+                color: 'white',
+                padding: '10px 15px',
+                borderRadius: '15px',
+                borderBottomRightRadius: msg.userId === userId ? '4px' : '15px',
+                borderBottomLeftRadius: msg.userId === userId ? '15px' : '4px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+              }}
+            >
+              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: msg.userId === userId ? '#FFD700' : '#87CEEB', marginBottom: '5px' }}>
+                {msg.userName}
+              </div>
+              <p style={{ margin: 0 }}>{msg.text}</p>
+              <span style={{ fontSize: '0.7rem', color: '#ccc', display: 'block', textAlign: 'right', marginTop: '5px' }}>
+                {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+              </span>
             </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Chat Input (Fixed and lifted above Nav Bar) */}
+      <div 
+        style={{ 
+          position: 'fixed', 
+          bottom: `${INPUT_BOTTOM_OFFSET}px`, // Lifts it up 50px (above the nav bar)
+          width: '100%', 
+          backgroundColor: '#222', 
+          padding: '10px 20px', 
+          boxShadow: '0 -2px 5px rgba(0,0,0,0.5)',
+          zIndex: 10,
+          height: `${INPUT_HEIGHT}px`,
+          boxSizing: 'border-box', // Include padding in height calculation
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        <form onSubmit={sendMessage} style={{ display: 'flex', width: '100%' }}>
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            style={{
+              flexGrow: 1,
+              padding: '10px 15px',
+              borderRadius: '25px',
+              border: '2px solid #FFD700',
+              backgroundColor: '#111',
+              color: 'white',
+              outline: 'none',
+              fontSize: '1rem',
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              marginLeft: '10px',
+              backgroundColor: '#006400',
+              color: 'white',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '25px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              transition: 'background-color 0.2s',
+            }}
+            onMouseOver={e => e.target.style.backgroundColor = '#004d00'}
+            onMouseOut={e => e.target.style.backgroundColor = '#006400'}
+          >
+            Send
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+
+// 3. Profile Screen
+const ProfileScreen = ({ userId, displayName, photoURL, isAnon }) => {
+  const providers = [
+    { name: "Google", provider: new GoogleAuthProvider(), icon: "G" },
+    { name: "GitHub", provider: new GithubAuthProvider(), icon: "🐈" }
+  ];
+
+  const handleSignOut = () => {
+    signOut(auth).catch((error) => console.error("Sign-out error:", error));
+  };
+
+  return (
+    <div style={{ padding: '20px', color: 'white', overflowY: 'auto', paddingTop: '60px', paddingBottom: '60px' }}>
+      <h1 style={{ fontSize: '2rem', marginBottom: '20px', color: '#FFD700', textAlign: 'center' }}>User Profile</h1>
+
+      <div style={{ 
+        backgroundColor: '#333', 
+        padding: '20px', 
+        borderRadius: '12px',
+        boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        marginBottom: '30px'
+      }}>
+        <img 
+          src={photoURL || "https://placehold.co/100x100/333333/FFFFFF?text=👤"} 
+          alt="Profile" 
+          style={{ width: '100px', height: '100px', borderRadius: '50%', marginBottom: '15px', border: '3px solid #006400' }} 
+          onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/100x100/333333/FFFFFF?text=👤" }}
+        />
+        <h2 style={{ margin: '10px 0 5px 0', fontSize: '1.5rem' }}>{displayName || "Anonymous User"}</h2>
+        <p style={{ margin: '0 0 15px 0', fontSize: '0.9rem', color: '#ccc', textAlign: 'center', wordBreak: 'break-all' }}>ID: {userId}</p>
+
+        {isAnon ? (
+          <p style={{ color: '#FFD700', textAlign: 'center' }}>
+            You are currently signed in anonymously. Sign in below to save your data and use your display name in chat.
+          </p>
         ) : (
-            <p className="text-gray-400">Loading user data...</p>
+          <p style={{ color: '#006400', textAlign: 'center' }}>
+            You are securely authenticated.
+          </p>
         )}
-    </div>
-);
+      </div>
 
-// -----------------------------------------------------------
-// --- NEW CONTACT LIST PANEL COMPONENT ---
-// -----------------------------------------------------------
-
-const mockFriends = [
-    { id: 1, name: "Gemini AI", status: "Online", avatar: "🤖", statusColor: "bg-green-500" },
-    { id: 2, name: "Alice", status: "Offline", avatar: "👩", statusColor: "bg-gray-500" },
-    { id: 3, name: "Bob", status: "Online", avatar: "👨", statusColor: "bg-green-500" },
-    { id: 4, name: "Charlie", status: "Away", avatar: "🐻", statusColor: "bg-yellow-500" },
-    { id: 5, name: "Diana", status: "Online", avatar: "🦊", statusColor: "bg-green-500" },
-    { id: 6, name: "Eve", status: "Offline", avatar: "🦁", statusColor: "bg-gray-500" },
-    { id: 7, name: "Frank", status: "Online", avatar: "🦉", statusColor: "bg-green-500" },
-    // Add more to show scrolling
-    { id: 8, name: "Grace", status: "Online", avatar: "🦄", statusColor: "bg-green-500" },
-    { id: 9, name: "Henry", status: "Away", avatar: "🐺", statusColor: "bg-yellow-500" },
-    { id: 10, name: "Ivy", status: "Online", avatar: "🐲", statusColor: "bg-green-500" },
-];
-
-const ContactListItem = ({ friend }) => (
-    <div className="flex items-center p-2 rounded-lg hover:bg-gray-700 transition cursor-pointer">
-        <div className="relative mr-3">
-            <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-xl">
-                {friend.avatar}
-            </div>
-            {/* Status Indicator */}
-            <div className={`absolute bottom-0 right-0 w-3 h-3 ${friend.statusColor} rounded-full ring-2 ring-gray-900`}></div>
-        </div>
-        <div className="flex-1 min-w-0">
-            <p className="text-white font-semibold truncate">{friend.name}</p>
-            <p className="text-xs text-gray-400">{friend.status}</p>
-        </div>
-    </div>
-);
-
-const ContactListPanel = () => (
-    // This panel is hidden on mobile and shows on desktop (md:block)
-    // pb-20 to clear the bottom navigation bar if it's visible on desktop
-    <div className="hidden md:block w-72 bg-gray-900 border-l border-gray-700 h-full overflow-y-auto pt-6 pb-20">
-        <div className="px-4 mb-4">
-            <h3 className="text-xl font-bold text-yellow-400 border-b border-gray-700 pb-2">
-                Friends ({mockFriends.length})
-            </h3>
-        </div>
-        <div className="space-y-1 px-2">
-            {mockFriends.map(friend => (
-                <ContactListItem key={friend.id} friend={friend} />
+      <div style={{ marginBottom: '30px' }}>
+        <h3 style={{ borderBottom: '1px solid #555', paddingBottom: '5px', marginBottom: '15px', color: '#FFD700' }}>Authentication</h3>
+        {isAnon && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {providers.map(p => (
+              <button
+                key={p.name}
+                onClick={() => handleSignIn(p.provider)}
+                style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: p.name === 'Google' ? '#DB4437' : '#24292e',
+                  color: 'white',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'opacity 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                onMouseOver={e => e.target.style.opacity = 0.8}
+                onMouseOut={e => e.target.style.opacity = 1}
+              >
+                <span style={{ marginRight: '10px', fontSize: '1.2rem' }}>{p.icon}</span>
+                Sign in with {p.name}
+              </button>
             ))}
-        </div>
+          </div>
+        )}
+        {!isAnon && (
+          <button
+            onClick={handleSignOut}
+            style={{
+              width: '100%',
+              padding: '12px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: '#8B0000',
+              color: 'white',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'opacity 0.2s',
+            }}
+            onMouseOver={e => e.target.style.backgroundColor = '#6e0000'}
+            onMouseOut={e => e.target.style.backgroundColor = '#8B0000'}
+          >
+            Sign Out
+          </button>
+        )}
+      </div>
+
     </div>
-);
-
-
-// -----------------------------------------------------------
-// --- AUTH/MAIN APPLICATION COMPONENT ---
-// -----------------------------------------------------------
-
-const App = () => {
-    // Initial state set to 'home' to land on the new video feed
-    const [activeTab, setActiveTab] = useState("home"); 
-    const [user, setUser] = useState(null);
-    const [showModal, setShowModal] = useState(false);
-    const isAuthReady = useRef(false);
-
-    // 3. AUTH EFFECT
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-            if (currentUser) {
-                setUser(currentUser);
-            } else {
-                // If not signed in, sign in anonymously for Firebase access
-                try {
-                    await auth.signInAnonymously();
-                } catch (error) {
-                    console.error("Anonymous sign-in failed:", error);
-                    // This is a major error, so we show a modal
-                    setShowModal(true);
-                }
-            }
-            isAuthReady.current = true;
-        });
-        return () => unsubscribe();
-    }, []);
-
-    // 4. HANDLERS
-    const handleSignOut = async () => {
-        try {
-            await signOut(auth);
-            setUser(null);
-            // After sign out, the onAuthStateChanged listener will trigger the anonymous sign-in
-        } catch (error) {
-            console.error("Error signing out:", error);
-        }
-    };
-
-    // 5. RENDER LOGIC
-    const renderContent = () => {
-        if (!isAuthReady.current) {
-            return (
-                <div className="flex-1 flex items-center justify-center text-white">
-                    <p>Loading application...</p>
-                </div>
-            );
-        }
-
-        switch (activeTab) {
-            case "home":
-                return <HomePage />;
-            case "chats":
-                return <ChatsPage />;
-            case "profile":
-                return <ProfilePage user={user} handleSignOut={handleSignOut} />;
-            default:
-                return null;
-        }
-    };
-
-    // Main App Layout 
-    return (
-        <>
-            {/* Inject CSS to hide the scrollbar for the video feed container */}
-            <style>{`
-                /* Hide scrollbar for Webkit browsers (Chrome, Safari) */
-                .hide-scrollbar::-webkit-scrollbar {
-                    display: none;
-                    width: 0;
-                    height: 0;
-                }
-                /* Hide scrollbar for Firefox and IE/Edge */
-                .hide-scrollbar {
-                    scrollbar-width: none;
-                    -ms-overflow-style: none;
-                }
-            `}</style>
-            
-            {/* Added max-h-screen and overflow-hidden to ensure full screen layout */}
-            <div className="h-screen w-screen flex flex-col bg-black text-white font-['Inter'] max-h-screen overflow-hidden">
-                
-                {/* Main Content & Right Panel Container */}
-                <div className="flex-1 flex overflow-hidden">
-                    
-                    {/* Left/Center Content (Existing Tab Content) */}
-                    <div className="flex-1 min-w-0">
-                        {renderContent()}
-                    </div>
-
-                    {/* Right Panel: Contact List */}
-                    <ContactListPanel />
-
-                </div>
-                
-                {showModal && <SystemModal onClose={() => setShowModal(false)} />}
-
-                {/* Fixed Bottom Navigation Bar (Visible on all screens) */}
-                <div
-                    className="fixed bottom-0 w-full flex justify-around items-center 
-                               bg-gray-900 border-t border-gray-700 text-white 
-                               p-3 font-semibold text-sm z-10 shadow-lg" 
-                >
-                    <TabButton 
-                        label="Feed" // UPDATED LABEL
-                        icon="🎬" // UPDATED ICON
-                        active={activeTab === 'home'} 
-                        onClick={() => setActiveTab("home")} 
-                    />
-                    <TabButton 
-                        label="Chats" 
-                        icon="💬" 
-                        active={activeTab === 'chats'} 
-                        onClick={() => setActiveTab("chats")} 
-                    />
-                    <TabButton 
-                        label="Profile" 
-                        icon="👤" 
-                        active={activeTab === 'profile'} 
-                        onClick={() => setActiveTab("profile")} 
-                    />
-                </div>
-            </div>
-        </>
-    );
+  );
 };
 
-// Helper component for bottom navigation
-const TabButton = ({ label, icon, active, onClick }) => (
-    <div 
-        onClick={onClick} 
-        className={`flex flex-col items-center cursor-pointer p-1 rounded-lg transition duration-200
-                   ${active ? 'text-blue-400 bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-    >
-        <span className="text-xl mb-1">{icon}</span>
-        <span className="text-xs">{label}</span>
+
+// 4. System Modal
+const SystemModal = () => (
+  <div style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  }}>
+    <div style={{
+      backgroundColor: '#222',
+      padding: '30px',
+      borderRadius: '15px',
+      color: 'white',
+      textAlign: 'center',
+      maxWidth: '80%',
+      boxShadow: '0 5px 15px rgba(0,0,0,0.5)',
+      border: '2px solid #FFD700'
+    }}>
+      <h3 style={{ color: '#FFD700', marginBottom: '15px' }}>Initializing System...</h3>
+      <p>Establishing secure connection to ASA Services.</p>
+      <div style={{ marginTop: '20px' }}>
+        <div style={{ 
+          height: '10px', 
+          backgroundColor: '#444', 
+          borderRadius: '5px', 
+          overflow: 'hidden' 
+        }}>
+          <div style={{ 
+            width: '100%', 
+            height: '100%', 
+            backgroundColor: '#006400', 
+            animation: 'loading-bar 1.5s infinite linear',
+            borderRadius: '5px',
+          }} />
+        </div>
+      </div>
     </div>
+    <style>{`
+      @keyframes loading-bar {
+        0% { transform: translateX(-100%) }
+        100% { transform: translateX(100%) }
+      }
+    `}</style>
+  </div>
 );
+
+
+// --- MAIN APP COMPONENT ---
+const App = () => {
+  const [activeTab, setActiveTab] = useState("home");
+  const [user, setUser] = useState(null);
+  const [showModal, setShowModal] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
+  // 1. Authentication Listener and Initialization
+  useEffect(() => {
+    // Attempt to sign in anonymously first if no user is found
+    const initializeAuth = async () => {
+        try {
+            await auth.signInAnonymously();
+        } catch (error) {
+            console.error("Anonymous sign-in failed:", error);
+        }
+    };
+    
+    // Set up auth state listener
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+      setShowModal(false); // Hide modal once auth status is confirmed
+    });
+
+    // If we're loading and haven't checked auth yet, try anonymous sign-in
+    if (!auth.currentUser) {
+        initializeAuth();
+    }
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
+
+  const userId = user?.uid || crypto.randomUUID();
+  const displayName = user?.displayName;
+  const photoURL = user?.photoURL;
+  const isAnon = user?.isAnonymous;
+
+  const renderContent = () => {
+    if (!isAuthReady) {
+      return null;
+    }
+
+    switch (activeTab) {
+      case "home":
+        return <HomeScreen userId={userId} displayName={displayName} photoURL={photoURL} />;
+      case "chats":
+        return <ChatScreen db={db} userId={userId} displayName={displayName} photoURL={photoURL} />;
+      case "profile":
+        return <ProfileScreen userId={userId} displayName={displayName} photoURL={photoURL} isAnon={isAnon} />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div
+      style={{
+        height: "100vh",
+        width: "100vw",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: "black",
+        fontFamily: 'Inter, sans-serif'
+      }}
+    >
+      <div style={{ flex: 1, overflowY: 'hidden' }}>{renderContent()}</div>
+      {showModal && <SystemModal />}
+
+      {/* Bottom Navigation Bar */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-around",
+          alignItems: "center",
+          background: "linear-gradient(to right, #006400, #FFD700, #8B0000)",
+          color: "white",
+          padding: "10px 0",
+          position: "fixed",
+          bottom: 0,
+          width: "100%",
+          fontWeight: "600",
+          fontSize: "0.9rem",
+          zIndex: 20, // Increased Z-index to ensure it sits on top
+          height: '50px', // Explicit height for better positioning calculation
+          boxSizing: 'border-box'
+        }}
+      >
+        <div onClick={() => setActiveTab("home")} style={{ cursor: "pointer", opacity: activeTab === 'home' ? 1 : 0.7 }}>
+          🎬 Home
+        </div>
+        <div onClick={() => setActiveTab("chats")} style={{ cursor: "pointer", opacity: activeTab === 'chats' ? 1 : 0.7 }}>
+          💬 Chats
+        </div>
+        <div onClick={() => setActiveTab("profile")} style={{ cursor: "pointer", opacity: activeTab === 'profile' ? 1 : 0.7 }}>
+          👤 Profile
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default App;
