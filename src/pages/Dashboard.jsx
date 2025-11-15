@@ -26,7 +26,8 @@ import {
 } from 'firebase/firestore';
 
 // Global variables provided by the Canvas environment (Only using __app_id for Firestore paths)
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'vercel-local-dev'; 
+const rawAppId = typeof __app_id !== 'undefined' ?
+__app_id : 'vercel-local-dev'; 
 // Sanitize the app ID to ensure it is a single, clean segment for Firestore path construction.
 const appId = rawAppId.split(/[\/\-]/)[0]; 
 
@@ -39,12 +40,10 @@ const customFirebaseConfig = {
     messagingSenderId: "195882381688",
     appId: "1:195882381688:web:b12574044948f9df0f42b3",
 };
-
 // Initialize Firebase
 const firebaseApp = initializeApp(customFirebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
-
 // --- UTILITIES & MOCK DATA ---
 
 // Helper function to handle sign-in with a provider
@@ -55,7 +54,6 @@ const handleSignIn = async (provider) => {
         console.error("Sign-in error:", error);
     }
 };
-
 // --- CORE COMPONENTS ---
 
 // 1. Home Screen (Now a Video Player)
@@ -70,6 +68,7 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
         url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", 
         title: "Elephants Dream (Sample Video)" 
     }
+  
   ];
   
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
@@ -92,9 +91,9 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
 
   const handleTouchEnd = () => {
     // Calculate the distance and direction
-    const distance = touchStart - touchEnd; // Positive value means upward swipe
+    const distance = touchStart - touchEnd;
+    // Positive value means upward swipe
     const isUpwardSwipe = distance > MIN_SWIPE_DISTANCE;
-
     if (isUpwardSwipe) {
       // Cycle to the next video
       setCurrentVideoIndex(prevIndex => (prevIndex + 1) % SAMPLE_VIDEOS.length);
@@ -117,6 +116,7 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
     }}>
       {/* Header for the video player screen (Fixed top) */}
       <div style={{ 
+     
         position: 'fixed', 
         top: 0, 
         width: '100%', 
@@ -127,6 +127,7 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
         boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
         zIndex: 10,
         height: `${HEADER_HEIGHT}px`,
+     
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -139,6 +140,7 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
         onTouchStart={handleTouchStart} 
         onTouchMove={handleTouchMove} 
         onTouchEnd={handleTouchEnd}
+ 
         style={{ 
           flex: 1, 
           display: 'flex', 
@@ -147,6 +149,7 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
           backgroundColor: '#111',
           // Add padding to ensure the video isn't hidden by the fixed header/footer
           paddingTop: `${HEADER_HEIGHT}px`,
+ 
           paddingBottom: `${NAV_HEIGHT}px`,
           overflow: 'hidden', // Prevent default scroll for a better swipe feel
           touchAction: 'none', // Disable default touch actions
@@ -155,13 +158,15 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
       >
         {/* Inner container for visual centering and padding */}
         <div style={{ 
-            width: '100%', 
+   
+          width: '100%', 
             height: '100%', 
             display: 'flex', 
             flexDirection: 'column',
             justifyContent: 'center',
             alignItems: 'center',
             padding: `${PADDING}px`,
+         
             boxSizing: 'border-box',
           }}>
           <video 
@@ -169,6 +174,7 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
             autoPlay 
             muted
             // The video element takes up 90% of the available width/height of its flex container
+           
             style={{ 
               maxWidth: '90%', 
               maxHeight: '90%', 
@@ -176,11 +182,12 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
               height: 'auto', 
               borderRadius: '12px',
               border: '3px solid #006400',
+  
               boxShadow: '0 0 20px rgba(0, 100, 0, 0.5)' 
             }}
             onError={(e) => {
                 // Display a fallback message if the video fails to load
-                e.target.style.display = 'none'; 
+                e.target.style.display = 'none';
                 const container = e.target.parentElement;
                 if (container.querySelector('.video-error-message')) return;
                 
@@ -206,13 +213,15 @@ const HomeScreen = ({ userId, displayName, photoURL }) => {
             backgroundColor: '#222', 
             color: 'white',
             borderTop: '1px solid #444',
-            width: '90%',
+            width: 
+            '90%',
             maxWidth: '500px',
             borderRadius: '0 0 12px 12px',
             marginTop: '10px'
           }}>
             <p style={{ margin: 0, fontSize: '0.9rem', color: '#ccc', textAlign: 'center' }}>
               Swipe up to watch next
+        
             </p>
           </div>
         </div>
@@ -228,13 +237,11 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef(null);
   const chatCollectionPath = `artifacts/${appId}/public/data/globalChat`;
-
-  // Scroll to bottom effect
+// Scroll to bottom effect
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  // Real-time message listener
+// Real-time message listener
   useEffect(() => {
     // 1. Create the query (using orderBy for later in-memory sort)
     // NOTE: orderBy is used here only to indicate the desired sort direction; actual sorting will be done in JS
@@ -244,6 +251,7 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedMessages = [];
       snapshot.forEach((doc) => {
+       
         fetchedMessages.push({ ...doc.data(), id: doc.id });
       });
 
@@ -280,14 +288,14 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
       console.error("Error sending message:", error);
     }
   };
-
-  // Chat bar is ~50px, Input bar is ~60px. Total offset for padding: 110px + gap (20px) = 130px.
-  // Header is 50px tall.
+// Chat bar is ~50px, Input bar is ~60px. Total offset for padding: 110px + gap (20px) = 130px.
+// Header is 50px tall.
   const HEADER_HEIGHT = 50;
   const INPUT_HEIGHT = 60;
-  const NAV_HEIGHT = 50; 
+  const NAV_HEIGHT = 50;
   const INPUT_BOTTOM_OFFSET = 50; // Position input 50px above screen bottom (where nav bar starts)
-  const TOTAL_BOTTOM_PADDING = NAV_HEIGHT + INPUT_HEIGHT + 10; // For scrollable area clearance
+  const TOTAL_BOTTOM_PADDING = NAV_HEIGHT + INPUT_HEIGHT + 10;
+// For scrollable area clearance
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -299,6 +307,7 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
         backgroundColor: '#333', 
         color: '#FFD700', 
         padding: '10px 20px', 
+ 
         textAlign: 'center',
         boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
         zIndex: 10,
@@ -310,7 +319,8 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
         <h2 style={{ margin: 0, fontSize: '1.4rem' }}>⭐ ASA Global Chat ⭐</h2>
       </div>
 
-      {/* Message List (Scrollable Content) */}
+    
+    {/* Message List (Scrollable Content) */}
       <div 
         style={{ 
           flex: 1, 
@@ -318,35 +328,42 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
           padding: '10px 20px',
           paddingTop: `${HEADER_HEIGHT + 10}px`, // Offset for header
           paddingBottom: `${TOTAL_BOTTOM_PADDING}px`, // Offset for input and nav
-        }}
+       
+      }}
       >
         {messages.map((msg) => (
           <div 
             key={msg.id} 
             style={{
               display: 'flex',
-              justifyContent: msg.userId === userId ? 'flex-end' : 'flex-start',
+              justifyContent: msg.userId === userId ?
+              'flex-end' : 'flex-start',
               marginBottom: '10px',
             }}
           >
             <div 
               style={{
                 maxWidth: '70%',
-                backgroundColor: msg.userId === userId ? '#006400' : '#444',
+                backgroundColor: 
+                msg.userId === userId ? '#006400' : '#444',
                 color: 'white',
                 padding: '10px 15px',
                 borderRadius: '15px',
-                borderBottomRightRadius: msg.userId === userId ? '4px' : '15px',
-                borderBottomLeftRadius: msg.userId === userId ? '15px' : '4px',
+                borderBottomRightRadius: msg.userId === userId ?
+                '4px' : '15px',
+                borderBottomLeftRadius: msg.userId === userId ?
+                '15px' : '4px',
                 boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
               }}
             >
-              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: msg.userId === userId ? '#FFD700' : '#87CEEB', marginBottom: '5px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: msg.userId === userId ?
+              '#FFD700' : '#87CEEB', marginBottom: '5px' }}>
                 {msg.userName}
               </div>
               <p style={{ margin: 0 }}>{msg.text}</p>
               <span style={{ fontSize: '0.7rem', color: '#ccc', display: 'block', textAlign: 'right', marginTop: '5px' }}>
-                {msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
+                {msg.timestamp ?
+                new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...'}
               </span>
             </div>
           </div>
@@ -357,6 +374,7 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
       {/* Chat Input (Fixed and lifted above Nav Bar) */}
       <div 
         style={{ 
+ 
           position: 'fixed', 
           bottom: `${INPUT_BOTTOM_OFFSET}px`, // Lifts it up 50px (above the nav bar)
           width: '100%', 
@@ -364,6 +382,7 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
           padding: '10px 20px', 
           boxShadow: '0 -2px 5px rgba(0,0,0,0.5)',
           zIndex: 10,
+      
           height: `${INPUT_HEIGHT}px`,
           boxSizing: 'border-box', // Include padding in height calculation
           display: 'flex',
@@ -373,6 +392,7 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
         <form onSubmit={sendMessage} style={{ display: 'flex', width: '100%' }}>
           <input
             type="text"
+     
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             placeholder="Type a message..."
@@ -380,6 +400,7 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
               flexGrow: 1,
               padding: '10px 15px',
               borderRadius: '25px',
+       
               border: '2px solid #FFD700',
               backgroundColor: '#111',
               color: 'white',
@@ -387,23 +408,30 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
               fontSize: '1rem',
             }}
           />
+        
           <button
             type="submit"
+            onClick={sendMessage}
+            disabled={newMessage.trim() === "" || !userId}
             style={{
-              marginLeft: '10px',
-              backgroundColor: '#006400',
-              color: 'white',
-              border: 'none',
-              padding: '10px 20px',
+              padding: '10px 15px',
               borderRadius: '25px',
-              cursor: 'pointer',
+              border: 'none',
+              backgroundColor: newMessage.trim() === "" || !userId ? '#444' : '#006400',
+              color: 'white',
               fontWeight: 'bold',
+              cursor: newMessage.trim() === "" || !userId ? 'not-allowed' : 'pointer',
+              marginLeft: '10px',
               transition: 'background-color 0.2s',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
-            onMouseOver={e => e.target.style.backgroundColor = '#004d00'}
-            onMouseOut={e => e.target.style.backgroundColor = '#006400'}
           >
-            Send
+            <span role="img" aria-label="send">
+              ▶️
+            </span>
           </button>
         </form>
       </div>
@@ -413,24 +441,27 @@ const ChatScreen = ({ db, userId, displayName, photoURL }) => {
 
 
 // 3. Profile Screen
-const ProfileScreen = ({ userId, displayName, photoURL, isAnon }) => {
+const ProfileScreen = ({ userId, displayName, photoURL }) => {
+  const isAnon = userId && userId.startsWith('anon-'); // Simple check for anonymous ID structure (Firebase anonymous IDs start with `anon-`)
+  
+  // Auth Providers list
   const providers = [
     { name: "Google", provider: new GoogleAuthProvider(), icon: "G" },
     { name: "GitHub", provider: new GithubAuthProvider(), icon: "🐈" }
   ];
-
+  
   const handleSignOut = () => {
     signOut(auth).catch((error) => console.error("Sign-out error:", error));
   };
-
+  
   return (
     <div style={{ padding: '20px', color: 'white', overflowY: 'auto', paddingTop: '60px', paddingBottom: '60px' }}>
       <h1 style={{ fontSize: '2rem', marginBottom: '20px', color: '#FFD700', textAlign: 'center' }}>User Profile</h1>
-
+      
       <div style={{ 
         backgroundColor: '#333', 
         padding: '20px', 
-        borderRadius: '12px',
+        borderRadius: '12px', 
         boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
         display: 'flex',
         flexDirection: 'column',
@@ -440,12 +471,22 @@ const ProfileScreen = ({ userId, displayName, photoURL, isAnon }) => {
         <img 
           src={photoURL || "https://placehold.co/100x100/333333/FFFFFF?text=👤"} 
           alt="Profile" 
-          style={{ width: '100px', height: '100px', borderRadius: '50%', marginBottom: '15px', border: '3px solid #006400' }} 
-          onError={(e) => { e.target.onerror = null; e.target.src="https://placehold.co/100x100/333333/FFFFFF?text=👤" }}
+          style={{ 
+            width: '100px', 
+            height: '100px', 
+            borderRadius: '50%', 
+            marginBottom: '15px',
+            border: '3px solid #006400'
+          }}
+          onError={(e) => {
+            e.target.onerror = null; 
+            e.target.src="https://placehold.co/100x100/333333/FFFFFF?text=👤"
+          }} 
         />
         <h2 style={{ margin: '10px 0 5px 0', fontSize: '1.5rem' }}>{displayName || "Anonymous User"}</h2>
-        <p style={{ margin: '0 0 15px 0', fontSize: '0.9rem', color: '#ccc', textAlign: 'center', wordBreak: 'break-all' }}>ID: {userId}</p>
-
+        <p style={{ margin: '0 0 15px 0', fontSize: '0.9rem', color: 
+          '#ccc', textAlign: 'center', wordBreak: 'break-all' }}>ID: {userId}</p>
+        
         {isAnon ? (
           <p style={{ color: '#FFD700', textAlign: 'center' }}>
             You are currently signed in anonymously. Sign in below to save your data and use your display name in chat.
@@ -459,10 +500,11 @@ const ProfileScreen = ({ userId, displayName, photoURL, isAnon }) => {
 
       <div style={{ marginBottom: '30px' }}>
         <h3 style={{ borderBottom: '1px solid #555', paddingBottom: '5px', marginBottom: '15px', color: '#FFD700' }}>Authentication</h3>
+        
         {isAnon && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {providers.map(p => (
-              <button
+              <button 
                 key={p.name}
                 onClick={() => handleSignIn(p.provider)}
                 style={{
@@ -481,17 +523,17 @@ const ProfileScreen = ({ userId, displayName, photoURL, isAnon }) => {
                 onMouseOver={e => e.target.style.opacity = 0.8}
                 onMouseOut={e => e.target.style.opacity = 1}
               >
-                <span style={{ marginRight: '10px', fontSize: '1.2rem' }}>{p.icon}</span>
+                <span style={{ marginRight: '10px', fontSize: '1.2rem' }}>{p.icon}</span> 
                 Sign in with {p.name}
               </button>
             ))}
           </div>
         )}
-        {!isAnon && (
+        
+        {!isAnon && userId && (
           <button
             onClick={handleSignOut}
             style={{
-              width: '100%',
               padding: '12px',
               borderRadius: '8px',
               border: 'none',
@@ -500,57 +542,59 @@ const ProfileScreen = ({ userId, displayName, photoURL, isAnon }) => {
               fontWeight: '600',
               cursor: 'pointer',
               transition: 'opacity 0.2s',
+              width: '100%',
+              marginTop: '10px',
             }}
-            onMouseOver={e => e.target.style.backgroundColor = '#6e0000'}
-            onMouseOut={e => e.target.style.backgroundColor = '#8B0000'}
+            onMouseOver={e => e.target.style.opacity = 0.8}
+            onMouseOut={e => e.target.style.opacity = 1}
           >
             Sign Out
           </button>
         )}
+        
+        {!userId && (
+          <p style={{ textAlign: 'center', color: '#ccc' }}>
+            Firebase initialization in progress...
+          </p>
+        )}
       </div>
-
     </div>
   );
 };
 
 
-// 4. System Modal
-const SystemModal = () => (
-  <div style={{
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    width: '100vw',
-    height: '100vh',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
+// 4. Loading Screen
+const LoadingScreen = () => (
+  <div style={{ 
+    height: '100%', 
+    width: '100%', 
+    display: 'flex', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(0,0,0,0.9)', 
+    position: 'fixed', 
+    top: 0, 
+    left: 0, 
+    zIndex: 100 
   }}>
-    <div style={{
-      backgroundColor: '#222',
-      padding: '30px',
-      borderRadius: '15px',
-      color: 'white',
-      textAlign: 'center',
-      maxWidth: '80%',
+    <div style={{ 
+      backgroundColor: '#222', 
+      padding: '30px', 
+      borderRadius: '15px', 
+      color: 'white', 
+      textAlign: 'center', 
+      maxWidth: '80%', 
       boxShadow: '0 5px 15px rgba(0,0,0,0.5)',
       border: '2px solid #FFD700'
     }}>
       <h3 style={{ color: '#FFD700', marginBottom: '15px' }}>Initializing System...</h3>
       <p>Establishing secure connection to ASA Services.</p>
       <div style={{ marginTop: '20px' }}>
-        <div style={{ 
-          height: '10px', 
-          backgroundColor: '#444', 
-          borderRadius: '5px', 
-          overflow: 'hidden' 
-        }}>
+        <div style={{ height: '10px', backgroundColor: '#444', borderRadius: '5px', overflow: 'hidden' }}>
           <div style={{ 
             width: '100%', 
             height: '100%', 
-            backgroundColor: '#006400', 
+            backgroundColor: '#006400',
             animation: 'loading-bar 1.5s infinite linear',
             borderRadius: '5px',
           }} />
@@ -566,8 +610,7 @@ const SystemModal = () => (
   </div>
 );
 
-
-// --- MAIN APP COMPONENT ---
+// --- MAIN APP COMPONENT --- 
 const App = () => {
   const [activeTab, setActiveTab] = useState("home");
   const [user, setUser] = useState(null);
@@ -578,50 +621,63 @@ const App = () => {
   useEffect(() => {
     // Attempt to sign in anonymously first if no user is found
     const initializeAuth = async () => {
-        try {
-            await auth.signInAnonymously();
-        } catch (error) {
-            console.error("Anonymous sign-in failed:", error);
-        }
+      try {
+        await auth.signInAnonymously();
+      } catch (error) {
+        console.error("Anonymous sign-in failed:", error);
+      }
     };
-    
+
     // Set up auth state listener
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      if (currentUser) {
+        // Use user data if available, otherwise fallback to anonymous data
+        const userData = {
+          uid: currentUser.uid,
+          displayName: currentUser.displayName || (currentUser.isAnonymous ? 'Anonymous User' : 'Unknown User'),
+          photoURL: currentUser.photoURL || null,
+        };
+        setUser(userData);
+      } else {
+        setUser(null);
+        // If not signed in and auth is ready (i.e., this is the first state check), try anonymous sign-in
+        if (!isAuthReady) {
+          initializeAuth();
+        }
+      }
+      
       setIsAuthReady(true);
-      setShowModal(false); // Hide modal once auth status is confirmed
+      // Hide modal after auth check, regardless of success
+      setTimeout(() => setShowModal(false), 2000); 
     });
 
-    // If we're loading and haven't checked auth yet, try anonymous sign-in
-    if (!auth.currentUser) {
-        initializeAuth();
-    }
-
-    // Cleanup subscription on unmount
     return () => unsubscribe();
-  }, []);
+  }, [isAuthReady]);
 
-  const userId = user?.uid || crypto.randomUUID();
-  const displayName = user?.displayName;
-  const photoURL = user?.photoURL;
-  const isAnon = user?.isAnonymous;
-
+  // Helper function to render content based on active tab
   const renderContent = () => {
-    if (!isAuthReady) {
-      return null;
-    }
+    const userProps = {
+      db,
+      userId: user?.uid,
+      displayName: user?.displayName,
+      photoURL: user?.photoURL,
+    };
 
     switch (activeTab) {
       case "home":
-        return <HomeScreen userId={userId} displayName={displayName} photoURL={photoURL} />;
+        return <HomeScreen {...userProps} />;
       case "chats":
-        return <ChatScreen db={db} userId={userId} displayName={displayName} photoURL={photoURL} />;
+        return <ChatScreen {...userProps} />;
       case "profile":
-        return <ProfileScreen userId={userId} displayName={displayName} photoURL={photoURL} isAnon={isAnon} />;
+        return <ProfileScreen {...userProps} />;
       default:
-        return null;
+        return <HomeScreen {...userProps} />;
     }
   };
+
+  if (!isAuthReady) {
+    return <LoadingScreen />; // Show loading screen until Firebase auth state is checked
+  }
 
   return (
     <div
@@ -636,7 +692,7 @@ const App = () => {
       }}
     >
       <div style={{ flex: 1, overflowY: 'hidden' }}>{renderContent()}</div>
-      {showModal && <SystemModal />}
+      {showModal && <LoadingScreen />} {/* Use LoadingScreen as a temporary modal/system message */}
 
       {/* Bottom Navigation Bar */}
       <div
@@ -671,4 +727,7 @@ const App = () => {
   );
 };
 
+// ----------------------------------------------------------------
+// FIX: Export the main App component as default for Vercel/React to load it.
+// ----------------------------------------------------------------
 export default App;
