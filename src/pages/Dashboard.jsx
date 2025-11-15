@@ -1,8 +1,7 @@
 /* global __app_id */
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Send, LogOut, Loader, User, Home, MessageSquare, Heart, Clock, Menu } from 'lucide-react';
 
-// 1. FIREBASE IMPORTS
+// 1. FIREBASE IMPORTS (Updated to include social auth providers)
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
@@ -10,8 +9,7 @@ import {
     GoogleAuthProvider,
     GithubAuthProvider,
     signInWithPopup,
-    signOut,
-    signInAnonymously
+    signOut
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -28,539 +26,614 @@ import {
   limit,
 } from 'firebase/firestore';
 
-// --- CONFIGURATION ---
+// Global variables provided by the Canvas environment
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'vercel-local-dev'; 
 const appId = rawAppId.split(/[\/\-]/)[0]; 
 
-// Use the hardcoded configuration (Assuming this is the correct config the user intended to use for deployment)
-// NOTE: Vercel blank pages often happen because environment variables aren't loaded correctly.
-// Using a hardcoded config here ensures Firebase initializes.
-const firebaseConfig = {
+// --- USER'S FIREBASE CONFIGURATION (Using the hardcoded configuration provided previously) ---
+const customFirebaseConfig = {
     apiKey: "AIzaSyBRyHQf2IWzPoOrm8UsgcdJvDIxEQR2G40",
     authDomain: "asa1db.firebaseapp.com",
     projectId: "asa1db",
     storageBucket: "asa1db.firebasestorage.app",
     messagingSenderId: "195882381688",
-    appId: "1:195882381688:web:0b2d3544d651268b81a070",
+    appId: "1:195882381688:web:b1d8e1f5a73e6b7c2d13b4"
 };
 
-// --- INITIALIZE FIREBASE & UTILS ---
-let app, db, auth;
-// Set up globals to be initialized in useEffect
-let currentUserId = null;
+// --- CONSTANTS ---
+const HEADER_HEIGHT = 60; // in pixels
+const NAV_HEIGHT = 60; // in pixels
 
-// Initialize Firebase only once
-try {
-  app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-  auth = getAuth(app);
-  // Log level for Firebase debugging
-  // import { setLogLevel } from "firebase/firestore";
-  // setLogLevel('debug'); 
-} catch (error) {
-  console.error("Firebase initialization failed:", error);
-}
+// --- FIREBASE INITIALIZATION & AUTH ---
 
-// Fixed dimensions for layout
-const HEADER_HEIGHT = 60;
-const NAV_HEIGHT = 70;
+let firebaseApp, db, auth;
+let isFirebaseInitialized = false;
 
-// --- DUMMY DATA / CONSTANTS ---
-const DUMMY_PROFILES = [
-  { id: '1', name: 'AI Tutor', bio: 'I can teach you anything.' },
-  { id: '2', name: 'Fitness Coach', bio: 'Your personal workout guide.' },
-  { id: '3', name: 'ChefBot', bio: 'The best recipes are mine.' },
-  { id: '4', name: 'Historian Bot', bio: 'Facts from the past.' },
-];
-const DUMMY_FEED_ITEM = {
-    id: 'post-1',
-    author: 'Admin',
-    content: "Welcome to the new Gemini dashboard! Explore the chats and profiles.",
-    timestamp: new Date().toLocaleTimeString(),
-    likes: 5,
-    likedByMe: false,
-    commentsCount: 2,
+const initFirebase = () => {
+  if (isFirebaseInitialized) return;
+  try {
+    firebaseApp = initializeApp(customFirebaseConfig);
+    db = getFirestore(firebaseApp);
+    auth = getAuth(firebaseApp);
+    isFirebaseInitialized = true;
+    console.log("Firebase initialized successfully.");
+  } catch (error) {
+    console.error("Error initializing Firebase:", error);
+  }
 };
 
+// --- UTILITY COMPONENTS ---
 
-// --- APP COMPONENT ---
-export default function App() {
-  const [activeTab, setActiveTab] = useState("home"); // 'home', 'chats', 'profile'
-  const [user, setUser] = useState(null); // Firebase user object
-  const [isAuthReady, setIsAuthReady] = useState(false); // Crucial for Vercel deployment stability
-  const [showModal, setShowModal] = useState(false);
-  const [error, setError] = useState(null);
-  
-  // State for Firestore data
-  const [feedItems, setFeedItems] = useState([]);
-  const [chatList, setChatList] = useState([]);
-  const [totalUsers, setTotalUsers] = useState(0);
-
-  // 1. FIREBASE AUTHENTICATION EFFECT
-  useEffect(() => {
-    if (!auth) return; // Guard if Firebase failed to initialize
-
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      // 1. Set the user state (null or User object)
-      setUser(currentUser);
-      currentUserId = currentUser ? currentUser.uid : null;
-
-      // 2. Set the Auth Ready State to true after the initial check
-      setIsAuthReady(true);
-      
-      // 3. Handle sign-in/out for user metadata (optional, but good practice)
-      if (currentUser) {
-        const userRef = doc(db, 'userMetadata', currentUser.uid);
-        // Ensure user metadata exists for counts/profiles
-        await setDoc(userRef, { 
-          lastLogin: serverTimestamp(),
-          name: currentUser.displayName || 'Anonymous User',
-          email: currentUser.email || 'N/A',
-          photoURL: currentUser.photoURL || null,
-        }, { merge: true });
-      }
-    });
-
-    // Clean up listener on component unmount
-    return () => unsubscribe();
-  }, []); // Run only once on mount
-
-  // 2. FIRESTORE DATA FETCHING EFFECT (RUNS AFTER AUTH IS READY)
-  useEffect(() => {
-    // CRITICAL GUARD: Do not run Firestore operations until Auth is ready.
-    if (!db || !isAuthReady) {
-      console.log("Firestore/Auth not ready, skipping data fetch.");
-      return; 
-    }
-
-    // A. Fetch Feed (Public)
-    const feedQuery = query(collection(db, `artifacts/${appId}/public/data/feed`), orderBy('timestamp', 'desc'), limit(10));
-    const unsubscribeFeed = onSnapshot(feedQuery, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        // Client-side mapping for the current user's like status (simplistic check)
-        likedByMe: doc.data().likes?.includes(currentUserId) || false,
-      }));
-      if (items.length === 0) {
-        // Seed with a dummy post if the feed is empty
-        items.push(DUMMY_FEED_ITEM);
-      }
-      setFeedItems(items);
-    }, (err) => console.error("Feed snapshot error:", err));
-
-    // B. Fetch Chat List (User-specific private data)
-    let unsubscribeChats = () => {};
-    if (user) {
-        const chatQuery = query(collection(db, `artifacts/${appId}/users/${user.uid}/chats`), orderBy('lastUpdated', 'desc'), limit(5));
-        unsubscribeChats = onSnapshot(chatQuery, (snapshot) => {
-            setChatList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        }, (err) => console.error("Chat snapshot error:", err));
-    } else {
-        // Clear chats if user logs out
-        setChatList([]);
-    }
-
-    // C. Fetch Total User Count (Public/Aggregated)
-    const userCountRef = doc(db, 'publicMetadata', 'user_counts');
-    const unsubscribeCounts = onSnapshot(userCountRef, (docSnap) => {
-        if (docSnap.exists()) {
-            setTotalUsers(docSnap.data().totalUsers || 0);
-        } else {
-            // Initialize if it doesn't exist
-            setDoc(userCountRef, { totalUsers: 1, initDate: serverTimestamp() }, { merge: true });
-            setTotalUsers(1);
-        }
-    }, (err) => console.error("User count snapshot error:", err));
-
-    // Cleanup function for all listeners
-    return () => {
-      unsubscribeFeed();
-      unsubscribeChats();
-      unsubscribeCounts();
-    };
-
-  }, [db, isAuthReady, user]); // Re-run when Firebase objects are ready or user changes
-
-
-  // --- HANDLERS ---
-
-  // NOTE: In a production app, you would use environment variables for keys. 
-  // For this environment, we use the custom fetch utility and an empty key.
-  const handleGeminiChat = async (prompt, botName) => {
-    // Simplified logic: Just logging the prompt
-    console.log(`Sending prompt to ${botName}: ${prompt}`);
-    
-    // Simulate API call and state update
-    const newChat = {
-        id: crypto.randomUUID(),
-        model: "gemini-1.5-flash",
-        prompt,
-        response: `[Simulated response from ${botName}] I'm thinking about "${prompt}"...`,
-        timestamp: new Date().toLocaleTimeString(),
-        botName: botName,
-    };
-
-    // Save chat to Firestore (Private)
-    if (user) {
-        try {
-            await addDoc(collection(db, `artifacts/${appId}/users/${user.uid}/chats`), {
-                ...newChat,
-                lastUpdated: serverTimestamp(),
-                userId: user.uid,
-                timestamp: serverTimestamp(), // Use server timestamp for saving
-            });
-        } catch (e) {
-            console.error("Error adding document: ", e);
-            setError("Could not save chat. Check console for details.");
-        }
-    } else {
-        setError("You must be logged in to chat.");
-        setShowModal(true);
-    }
-  };
-
-  // Social Authentication Handler (Google, Github, or Anonymous)
-  const handleSocialAuth = async (providerName) => {
-    let provider;
-    if (providerName === 'Google') provider = new GoogleAuthProvider();
-    else if (providerName === 'Github') provider = new GithubAuthProvider();
-    else if (providerName === 'Anonymous') {
-      try {
-        await signInAnonymously(auth);
-        setShowModal(false);
-        return;
-      } catch (error) {
-        console.error("Anonymous sign in failed:", error);
-        setError("Anonymous sign-in failed. Try again.");
-        return;
-      }
-    }
-    
-    try {
-      await signInWithPopup(auth, provider);
-      setShowModal(false);
-    } catch (error) {
-      console.error("Authentication failed:", error);
-      setError(`Authentication with ${providerName} failed: ${error.message}`);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Logout failed:", error);
-      setError("Logout failed. Try again.");
-    }
-  };
-
-  const handleLike = useCallback(async (postId, isLiked) => {
-    if (!user) {
-        setError("You must be logged in to like posts.");
-        setShowModal(true);
-        return;
-    }
-
-    const postRef = doc(db, `artifacts/${appId}/public/data/feed`, postId);
-    const userId = user.uid;
-
-    try {
-        await runTransaction(db, async (transaction) => {
-            const docSnap = await transaction.get(postRef);
-            if (!docSnap.exists()) {
-                throw "Document does not exist!";
-            }
-            
-            const currentLikes = docSnap.data().likes || [];
-            let newLikes = [...currentLikes];
-
-            if (isLiked) {
-                // Unlike: remove userId from the array
-                newLikes = newLikes.filter(id => id !== userId);
-            } else {
-                // Like: add userId to the array (if not already present)
-                if (!newLikes.includes(userId)) {
-                    newLikes.push(userId);
-                }
-            }
-            
-            transaction.update(postRef, { likes: newLikes });
-        });
-    } catch (e) {
-        console.error("Transaction failed: ", e);
-        setError("Failed to update like count. Please try again.");
-    }
-  }, [db, user]);
-
-  // --- UI COMPONENTS ---
-
-  const SystemModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
-      <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full text-center">
-        <h3 className="text-xl font-bold mb-4 text-red-600">Authentication Required</h3>
-        <p className="mb-6 text-gray-700">{error || "Please sign in to access this feature."}</p>
+const SystemModal = ({ message = "Authentication or operation in progress...", onClose }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+    <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+      <p className="text-gray-800 font-semibold">{message}</p>
+      {onClose && (
         <button
-            onClick={() => handleSocialAuth('Anonymous')}
-            className="w-full bg-yellow-500 text-white py-3 rounded-xl font-semibold mb-2 shadow-md hover:bg-yellow-600 transition duration-150"
+          onClick={onClose}
+          className="mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
         >
-            Sign in Anonymously
+          Close
         </button>
-        <button
-            onClick={() => handleSocialAuth('Google')}
-            className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold mb-2 shadow-md hover:bg-blue-700 transition duration-150"
-        >
-            Sign in with Google
-        </button>
-        <button
-            onClick={() => handleSocialAuth('Github')}
-            className="w-full bg-gray-800 text-white py-3 rounded-xl font-semibold mb-4 shadow-md hover:bg-gray-900 transition duration-150"
-        >
-            Sign in with GitHub
-        </button>
-        <button 
-            onClick={() => setShowModal(false)}
-            className="text-gray-500 hover:text-gray-700 text-sm"
-        >
-            Close
-        </button>
-      </div>
+      )}
     </div>
-  );
+  </div>
+);
 
-  const HomeTab = () => (
-    <div className="p-4 space-y-4 max-w-xl mx-auto">
-      {/* Metrics Header */}
-      <div className="flex justify-around bg-gray-900 text-white p-4 rounded-xl shadow-lg">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-yellow-400">{totalUsers}</p>
-          <p className="text-sm">Active Users</p>
-        </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold text-green-400">{chatList.length}</p>
-          <p className="text-sm">My Chats</p>
-        </div>
-      </div>
+// --- Data Structures ---
 
-      {/* Feed Section */}
-      <h2 className="text-xl font-bold text-white pt-4">Community Feed</h2>
-      {feedItems.map((item) => {
-        const isLiked = item.likes?.includes(user?.uid) || false;
-        const likeCount = item.likes?.length || 0;
+// Represents a single user's profile data
+const defaultUserProfile = {
+  uid: '',
+  displayName: 'Guest User',
+  photoURL: '',
+  followerCount: 0,
+  followingCount: 0,
+  bio: 'A user on the platform.',
+};
 
+// Represents a single post (or "artifact")
+const defaultPost = {
+  id: '',
+  userId: '',
+  userName: 'Unknown',
+  userPhoto: '',
+  content: 'Default post content.',
+  timestamp: Date.now(),
+  likeCount: 0,
+  commentCount: 0,
+};
+
+// --- FIRESTORE HELPERS ---
+
+// Path for private user data (e.g., user profile, likes)
+const getUserDocRef = (uid) => doc(db, 'artifacts', appId, 'users', uid, 'userProfile', 'data');
+const getLikesCollectionRef = (uid) => collection(db, 'artifacts', appId, 'users', uid, 'likes');
+
+// Path for public data (e.g., posts, chats)
+const getPublicCollectionRef = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
+const POSTS_REF = getPublicCollectionRef('posts');
+
+// --- TABS (Content Components) ---
+
+// Home Content (Feed)
+const HomeContent = ({ user, db, auth, posts, userLikes, isLoading, handleLikePost }) => {
+  if (isLoading) return <div className="p-4 text-center text-gray-500">Loading feed...</div>;
+  if (posts.length === 0) return <div className="p-4 text-center text-gray-500">No posts yet. Be the first to post!</div>;
+
+  return (
+    <div className="p-4 space-y-4">
+      <h2 className="text-2xl font-bold text-gray-800">Your Feed</h2>
+      {posts.map((post) => {
+        const isLiked = userLikes[post.id];
         return (
-          <div key={item.id} className="bg-gray-800 p-4 rounded-xl shadow-lg text-white">
-            <p className="text-xs text-gray-400 mb-1">Posted by {item.author} at {item.timestamp}</p>
-            <p className="text-lg mb-3">{item.content}</p>
-            <div className="flex items-center space-x-4 text-sm">
-              <button 
-                onClick={() => handleLike(item.id, isLiked)}
-                className={`flex items-center transition duration-150 ${isLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-300'}`}
-              >
-                <Heart size={20} fill={isLiked ? 'currentColor' : 'none'} className="mr-1" />
-                {likeCount} {likeCount === 1 ? 'Like' : 'Likes'}
-              </button>
-              <div className="flex items-center text-gray-400">
-                <MessageSquare size={20} className="mr-1" />
-                {item.commentsCount || 0} Comments
+          <div key={post.id} className="bg-white p-4 rounded-xl shadow-lg border border-gray-100">
+            <div className="flex items-center mb-3">
+              <img 
+                src={post.userPhoto || 'https://placehold.co/40x40/ccc/fff?text=U'} 
+                alt={post.userName} 
+                className="w-10 h-10 rounded-full mr-3 object-cover"
+              />
+              <div>
+                <p className="font-semibold text-gray-800">{post.userName}</p>
+                <p className="text-xs text-gray-500">
+                  {new Date(post.timestamp).toLocaleString()}
+                </p>
               </div>
             </div>
+            <p className="text-gray-700 mb-4">{post.content}</p>
+            
+            <div className="flex justify-between items-center text-sm text-gray-500">
+              <span className="flex items-center space-x-1">
+                <span className="font-bold">{post.likeCount}</span> Likes
+              </span>
+              <button 
+                onClick={() => handleLikePost(post.id, isLiked)}
+                className={`flex items-center space-x-1 transition duration-200 ${isLiked ? 'text-red-500 font-bold' : 'text-gray-400 hover:text-red-500'}`}
+                disabled={!user}
+              >
+                {isLiked ? '❤️' : '🤍'}
+                <span>Like</span>
+              </button>
+            </div>
           </div>
-        )
+        );
       })}
+    </div>
+  );
+};
+
+// Chat List Content (Placeholder)
+const ChatList = () => (
+  <div className="p-4">
+    <h2 className="text-2xl font-bold text-gray-800 mb-4">Chats</h2>
+    <div className="bg-white p-4 rounded-xl shadow-lg text-gray-600">
+      <p>Chat functionality is coming soon! This is where your conversations will appear.</p>
+    </div>
+  </div>
+);
+
+// Profile Content
+const ProfileContent = ({ user, userProfile, handleSignOut }) => {
+  const profile = userProfile || defaultUserProfile;
+
+  return (
+    <div className="p-4 space-y-6">
+      <div className="bg-white p-6 rounded-xl shadow-2xl text-center">
+        <img 
+          src={profile.photoURL || 'https://placehold.co/100x100/3B82F6/fff?text=P'} 
+          alt={profile.displayName} 
+          className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-blue-500 shadow-md"
+        />
+        <h2 className="text-3xl font-extrabold text-gray-900">{profile.displayName}</h2>
+        <p className="text-sm text-gray-500 mb-4">User ID: <span className="text-xs font-mono break-all">{profile.uid || 'N/A'}</span></p>
+        
+        <p className="text-gray-700 italic mb-6">"{profile.bio}"</p>
+
+        <div className="flex justify-around text-lg font-semibold border-t pt-4">
+          <div className="text-center">
+            <p className="text-blue-600">{profile.followerCount}</p>
+            <p className="text-gray-500 text-sm">Followers</p>
+          </div>
+          <div className="text-center">
+            <p className="text-blue-600">{profile.followingCount}</p>
+            <p className="text-gray-500 text-sm">Following</p>
+          </div>
+        </div>
+      </div>
       
-      <button 
-          className="w-full bg-yellow-600 text-white py-2 rounded-xl font-semibold shadow-lg hover:bg-yellow-700 transition duration-150 mt-4"
-          onClick={() => setActiveTab('chats')}
+      {user && (
+        <button 
+          onClick={handleSignOut}
+          className="w-full flex items-center justify-center px-4 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition duration-150"
+        >
+          {/* Replaced lucide-react icon with a hand wave emoji */}
+          <span className="mr-2 text-xl">👋</span>
+          Sign Out
+        </button>
+      )}
+      {!user && (
+        <p className="text-center text-gray-500 p-4 bg-gray-100 rounded-xl">
+          Sign in to manage your profile!
+        </p>
+      )}
+    </div>
+  );
+};
+
+// Post Creation Component
+const PostCreator = ({ user, userProfile }) => {
+  const [content, setContent] = useState('');
+  const [isPosting, setIsPosting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handlePost = async () => {
+    if (!user || !userProfile || isPosting || content.trim() === '') {
+      setError('Please sign in and enter some content.');
+      return;
+    }
+    
+    setIsPosting(true);
+    setError('');
+
+    try {
+      const newPost = {
+        userId: user.uid,
+        userName: userProfile.displayName || 'Anonymous',
+        userPhoto: userProfile.photoURL || '',
+        content: content.trim(),
+        timestamp: serverTimestamp(),
+        likeCount: 0,
+        commentCount: 0,
+      };
+
+      await addDoc(POSTS_REF, newPost);
+
+      setContent('');
+    } catch (e) {
+      console.error("Error adding document: ", e);
+      setError('Failed to create post. Please try again.');
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-lg">
+        Please sign in to create a post.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white p-4 rounded-xl shadow-lg mb-4">
+      <textarea
+        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
+        rows="3"
+        placeholder={`What's on your mind, ${userProfile.displayName}?`}
+        value={content}
+        onChange={(e) => {
+          setContent(e.target.value);
+          if (error) setError('');
+        }}
+        disabled={isPosting}
+      ></textarea>
+      {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+      <button
+        onClick={handlePost}
+        disabled={isPosting || content.trim() === ''}
+        className={`mt-3 w-full px-4 py-2 font-bold rounded-xl transition ${
+          isPosting || content.trim() === ''
+            ? 'bg-gray-400 cursor-not-allowed'
+            : 'bg-green-500 text-white hover:bg-green-600 shadow-md'
+        }`}
       >
-          Start a New Chat
+        {isPosting ? 'Posting...' : 'Post'}
       </button>
     </div>
   );
+};
 
-  const ChatsTab = () => (
-    <div className="p-4 max-w-xl mx-auto space-y-4">
-      <h2 className="text-xl font-bold text-white pb-2 border-b border-gray-700">Recent Chats</h2>
+
+// --- MAIN APP COMPONENT ---
+
+const App = () => {
+  const [activeTab, setActiveTab] = useState("home");
+  const [user, setUser] = useState(null); // Firebase User object
+  const [userProfile, setUserProfile] = useState(defaultUserProfile); // User's custom profile data
+  const [posts, setPosts] = useState([]);
+  const [userLikes, setUserLikes] = useState({}); // { postId: true/false }
+  const [isLoading, setIsLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [modalMessage, setModalMessage] = useState('');
+
+  // 1. INITIALIZATION & AUTH LISTENER
+  useEffect(() => {
+    initFirebase();
+    if (!auth) return;
+
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      setIsLoading(false);
       
-      {user ? (
-          chatList.length > 0 ? (
-              chatList.map((chat) => (
-                  <div key={chat.id} className="bg-gray-800 p-4 rounded-xl shadow-md cursor-pointer hover:bg-gray-700 transition duration-150">
-                      <p className="text-lg font-semibold text-yellow-400">{chat.botName || 'General Chat'}</p>
-                      <p className="text-sm text-gray-300 truncate">{chat.prompt}</p>
-                      <p className="text-xs text-gray-500 flex items-center mt-1">
-                          <Clock size={14} className="mr-1" />
-                          Last updated: {chat.lastUpdated ? new Date(chat.lastUpdated.toDate()).toLocaleTimeString() : 'N/A'}
-                      </p>
-                  </div>
-              ))
-          ) : (
-              <div className="text-center text-gray-500 py-10">
-                  <p>You haven't started any chats yet.</p>
-              </div>
-          )
-      ) : (
-        <div className="text-center text-gray-400 py-10">
-            <p className="mb-4">Please sign in to view your chat history.</p>
-            <button 
-                onClick={() => setShowModal(true)}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700 transition duration-150"
-            >
-                Sign In
-            </button>
-        </div>
-      )}
+      if (currentUser) {
+        // Automatically create/fetch profile on sign-in
+        await fetchOrCreateUserProfile(currentUser);
+      } else {
+        setUserProfile(defaultUserProfile);
+        setUserLikes({});
+      }
+    });
 
-      <h2 className="text-xl font-bold text-white pt-4 pb-2 border-b border-gray-700">Start a New Chat</h2>
-      <div className="grid grid-cols-2 gap-4">
-        {DUMMY_PROFILES.map(profile => (
-            <button 
-                key={profile.id}
-                onClick={() => handleGeminiChat(`Start a conversation with me about ${profile.name.toLowerCase()}`, profile.name)}
-                className="bg-green-700 text-white p-4 rounded-xl shadow-lg hover:bg-green-600 transition duration-150 text-left"
-            >
-                <User size={24} className="mb-2 text-yellow-300" />
-                <p className="font-semibold">{profile.name}</p>
-                <p className="text-xs text-gray-300">{profile.bio.split(' ')[0]}...</p>
-            </button>
-        ))}
-      </div>
-    </div>
-  );
+    return () => unsubscribe();
+  }, []);
 
-  const ProfileTab = () => (
-    <div className="p-4 max-w-xl mx-auto space-y-6">
-      <h2 className="text-2xl font-bold text-white pb-2 border-b border-gray-700">My Profile</h2>
-      {user ? (
-        <div className="bg-gray-800 p-6 rounded-xl shadow-lg space-y-4">
-          <div className="flex items-center space-x-4">
-            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-3xl font-bold text-white">
-              {user.displayName ? user.displayName[0] : 'A'}
-            </div>
-            <div>
-              <p className="text-xl font-bold text-white">{user.displayName || "Anonymous User"}</p>
-              <p className="text-sm text-yellow-400">{user.email || "No email provided"}</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-400">User ID (for Public Sharing):</p>
-            <div className="bg-gray-700 p-2 rounded-lg break-all text-sm text-gray-200">
-                {user.uid}
-            </div>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center bg-red-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-red-700 transition duration-150 mt-4"
-          >
-            <LogOut size={20} className="mr-2" />
-            Sign Out
-          </button>
-        </div>
-      ) : (
-        <div className="text-center text-gray-400 py-10 bg-gray-800 p-6 rounded-xl shadow-lg">
-          <p className="text-lg mb-4">You are currently signed out.</p>
-          <button 
-            onClick={() => setShowModal(true)}
-            className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-green-700 transition duration-150 shadow-md"
-          >
-            Sign In / Sign Up
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  // 2. DATA FETCHERS (useEffect for all real-time data)
+
+  // Fetch Posts
+  useEffect(() => {
+    if (!db || !isFirebaseInitialized) return;
+
+    // Fetch the 50 most recent posts
+    const q = query(POSTS_REF, orderBy('timestamp', 'desc'), limit(50));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedPosts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        // Convert Firebase Timestamp to a JS date object or ensure it's a number
+        timestamp: doc.data().timestamp?.toDate()?.getTime() || Date.now()
+      }));
+      setPosts(fetchedPosts);
+    }, (error) => {
+      console.error("Error fetching posts:", error);
+    });
+
+    return () => unsubscribe();
+  }, [isLoading]); // Depend on isLoading to ensure auth is checked
+
+  // Fetch User Likes
+  useEffect(() => {
+    if (!db || !user || !isFirebaseInitialized) return;
+
+    const likesRef = getLikesCollectionRef(user.uid);
+    const q = query(likesRef, where('liked', '==', true));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const likesMap = {};
+      snapshot.docs.forEach(doc => {
+        // Doc ID is the postId, value is always true
+        likesMap[doc.id] = true;
+      });
+      setUserLikes(likesMap);
+    }, (error) => {
+      console.error("Error fetching user likes:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user, isLoading]);
+
+  // 3. AUTHENTICATION HANDLERS
+
+  const fetchOrCreateUserProfile = async (currentUser) => {
+    if (!db || !currentUser) return;
+
+    const profileRef = getUserDocRef(currentUser.uid);
+    
+    try {
+      const docSnap = await getDoc(profileRef); // Use getDoc, not onSnapshot here for initial read
+
+      if (docSnap.exists()) {
+        const profileData = docSnap.data();
+        setUserProfile({
+          uid: currentUser.uid,
+          displayName: currentUser.displayName || profileData.displayName || 'New User',
+          photoURL: currentUser.photoURL || profileData.photoURL || '',
+          ...profileData, // Overwrite with firestore data
+        });
+      } else {
+        // Create initial profile if it doesn't exist
+        const initialProfile = {
+          uid: currentUser.uid,
+          displayName: currentUser.displayName || 'New User',
+          photoURL: currentUser.photoURL || '',
+          followerCount: 0,
+          followingCount: 0,
+          bio: 'My first profile on this platform.',
+          createdAt: serverTimestamp(),
+        };
+        await setDoc(profileRef, initialProfile);
+        setUserProfile(initialProfile);
+      }
+    } catch (e) {
+      console.error("Error fetching/creating user profile:", e);
+      setUserProfile({ ...defaultUserProfile, uid: currentUser.uid });
+    }
+  };
+
+  const handleSignIn = async (providerName) => {
+    if (!auth) {
+      setModalMessage("Firebase Auth not initialized.");
+      setShowModal(true);
+      return;
+    }
+
+    const provider = providerName === 'google' 
+      ? new GoogleAuthProvider() 
+      : new GithubAuthProvider();
+
+    setModalMessage("Signing in...");
+    setShowModal(true);
+
+    try {
+      await signInWithPopup(auth, provider);
+      // Auth state listener handles setting the user and fetching profile
+    } catch (error) {
+      console.error("Sign-in error:", error);
+      setModalMessage(`Sign-in failed: ${error.message}`);
+    } finally {
+      setShowModal(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (!auth) return;
+    setModalMessage("Signing out...");
+    setShowModal(true);
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Sign-out error:", error);
+      setModalMessage(`Sign-out failed: ${error.message}`);
+    } finally {
+      setShowModal(false);
+    }
+  };
+
+  // 4. BUSINESS LOGIC HANDLERS
+
+  const handleLikePost = useCallback(async (postId, currentlyLiked) => {
+    if (!db || !user) {
+        setModalMessage("Please sign in to like posts.");
+        setShowModal(true);
+        setTimeout(() => setShowModal(false), 2000);
+        return;
+    }
+
+    const postRef = doc(POSTS_REF, postId);
+    const likeDocRef = doc(getLikesCollectionRef(user.uid), postId);
+    const delta = currentlyLiked ? -1 : 1;
+
+    try {
+        await runTransaction(db, async (transaction) => {
+            // 1. Update the Post's like count
+            const postDoc = await transaction.get(postRef);
+            if (!postDoc.exists()) {
+                throw new Error("Post does not exist!");
+            }
+            const newLikeCount = (postDoc.data().likeCount || 0) + delta;
+            transaction.update(postRef, { likeCount: newLikeCount < 0 ? 0 : newLikeCount });
+
+            // 2. Update the User's like status
+            if (currentlyLiked) {
+                // Remove the like record
+                transaction.delete(likeDocRef);
+            } else {
+                // Add the like record
+                transaction.set(likeDocRef, { liked: true, timestamp: serverTimestamp() });
+            }
+        });
+
+        // Optimistically update the local state for faster UI response
+        setUserLikes(prev => {
+          const newLikes = { ...prev };
+          if (currentlyLiked) {
+            delete newLikes[postId];
+          } else {
+            newLikes[postId] = true;
+          }
+          return newLikes;
+        });
+
+    } catch (e) {
+        console.error("Transaction failed: ", e);
+        setModalMessage("Failed to update like count. Try again.");
+        setShowModal(true);
+        setTimeout(() => setShowModal(false), 2000);
+    }
+  }, [db, user]);
+
+
+  // 5. RENDER LOGIC
 
   const renderContent = () => {
-    // 3. CRITICAL LOADING STATE: Show loading until auth state is definitively known
-    if (!isAuthReady) {
+    if (isLoading) {
+      return <SystemModal message="Initializing and checking authentication..." />;
+    }
+    
+    if (!user) {
       return (
-        <div className="flex items-center justify-center h-full bg-black text-white">
-          <Loader size={32} className="animate-spin mr-2 text-yellow-500" />
-          <p>Loading Authentication...</p>
+        <div className="flex flex-col items-center justify-center h-full p-4">
+          <h1 className="text-4xl font-extrabold text-gray-800 mb-6">Welcome to Your Social Feed</h1>
+          <p className="text-xl text-gray-600 mb-8 text-center">Sign in to start posting, liking, and chatting!</p>
+          <button 
+            onClick={() => handleSignIn('google')} 
+            className="w-full max-w-xs flex items-center justify-center px-4 py-3 mb-4 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition duration-150"
+          >
+            <span className="text-2xl mr-3">G</span> Sign in with Google
+          </button>
+          <button 
+            onClick={() => handleSignIn('github')} 
+            className="w-full max-w-xs flex items-center justify-center px-4 py-3 bg-gray-800 text-white font-bold rounded-xl shadow-lg hover:bg-gray-900 transition duration-150"
+          >
+            <span className="text-2xl mr-3">🐙</span> Sign in with GitHub
+          </button>
         </div>
       );
     }
-    
+
+    // Authenticated Content
     switch (activeTab) {
-      case "home":
-        return <HomeTab />;
-      case "chats":
-        return <ChatsTab />;
-      case "profile":
-        return <ProfileTab />;
+      case 'home':
+        return (
+          <div className="pt-4 pb-4">
+            <PostCreator user={user} userProfile={userProfile} />
+            <HomeContent 
+              user={user} 
+              db={db} 
+              auth={auth} 
+              posts={posts} 
+              userLikes={userLikes} 
+              isLoading={isLoading}
+              handleLikePost={handleLikePost}
+            />
+          </div>
+        );
+      case 'chats':
+        return <ChatList />;
+      case 'profile':
+        return <ProfileContent user={user} userProfile={userProfile} handleSignOut={handleSignOut} />;
       default:
-        return <HomeTab />;
+        return <HomeContent 
+          user={user} 
+          db={db} 
+          auth={auth} 
+          posts={posts} 
+          userLikes={userLikes} 
+          isLoading={isLoading}
+          handleLikePost={handleLikePost}
+        />;
     }
   };
-  
-  // Overall Layout
+
   return (
-    <div
-      style={{
-        height: "100vh",
-        width: "100vw",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "black",
-        fontFamily: 'Inter, sans-serif'
-      }}
-      className="text-white"
-    >
-        {/* Top Header */}
-        <div 
-            style={{ height: `${HEADER_HEIGHT}px` }} 
-            className="flex items-center justify-between p-4 bg-gray-900 shadow-xl fixed top-0 w-full z-10"
-        >
-            <div className="text-2xl font-extrabold text-white">
-                <span className="text-yellow-500">G</span>emini <span className="text-green-500">1.5</span>
-            </div>
-            <button onClick={() => setActiveTab('profile')} className="text-gray-400 hover:text-white transition duration-150">
-                <Menu size={24} />
-            </button>
+    <div className="min-h-screen flex flex-col bg-gray-50 font-sans antialiased">
+      {/* Header */}
+      <header 
+        className="fixed top-0 left-0 w-full bg-white shadow-md z-10 flex items-center justify-between px-4"
+        style={{ height: `${HEADER_HEIGHT}px` }}
+      >
+        <h1 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-yellow-500">
+          SocialHub
+        </h1>
+        <div className="flex items-center space-x-2">
+            <img 
+              src={userProfile.photoURL || 'https://placehold.co/30x30/ccc/fff?text=U'} 
+              alt="Profile" 
+              className="w-8 h-8 rounded-full object-cover border border-gray-300"
+            />
+            <span className="text-sm font-semibold text-gray-700 hidden sm:inline">{userProfile.displayName}</span>
         </div>
+      </header>
 
       {/* Main Content Area */}
-      <div 
+      <main
+        className="flex-grow overflow-y-auto"
         style={{
-          paddingTop: `${HEADER_HEIGHT}px`,
-          paddingBottom: `${NAV_HEIGHT}px`,
-          overflowY: 'auto',
-          flex: 1, // Allow content to fill the space
-        }}>
-        {renderContent()}
-      </div>
-
-      {showModal && <SystemModal />}
-
-      {/* Bottom Navigation Bar */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-around",
-          alignItems: "center",
-          background: "linear-gradient(to right, #006400, #FFD700, #8B0000)", 
-          color: "white",
-          position: "fixed",
-          bottom: 0,
-          width: "100%",
-          zIndex: 20, 
-          height: `${NAV_HEIGHT}px`,
-          boxSizing: 'border-box',
-          boxShadow: '0 -2px 5px rgba(0,0,0,0.5)',
-          padding: '0 10px',
+          marginTop: `${HEADER_HEIGHT}px`,
+          marginBottom: `${NAV_HEIGHT}px`,
+          minHeight: `calc(100vh - ${HEADER_HEIGHT}px - ${NAV_HEIGHT}px)`
         }}
       >
-        <div onClick={() => setActiveTab("home")} style={{ cursor: "pointer", opacity: activeTab === 'home' ? 1 : 0.6, fontSize: '1.8rem', padding: '0 10px' }} title="Home">
-          🎬
+        <div className="max-w-xl mx-auto">
+          {renderContent()}
         </div>
-        <div onClick={() => setActiveTab("chats")} style={{ cursor: "pointer", opacity: activeTab === 'chats' ? 1 : 0.6, fontSize: '1.8rem', padding: '0 10px' }} title="Chats">
-          💬
+      </main>
+
+      {/* System Modal */}
+      {showModal && <SystemModal message={modalMessage} onClose={modalMessage.includes('failed') ? () => setShowModal(false) : undefined} />}
+
+      {/* Bottom Navigation Bar */}
+      {user && (
+        <div
+          className="fixed bottom-0 left-0 w-full flex justify-around items-center text-white shadow-2xl"
+          style={{
+            background: "linear-gradient(to right, #006400, #FFD700, #8B0000)",
+            zIndex: 20, 
+            height: `${NAV_HEIGHT}px`,
+          }}
+        >
+          {/* Emojis used instead of lucide-react icons */}
+          {[
+            { key: 'home', icon: '🏠', label: 'Home' },
+            { key: 'chats', icon: '💬', label: 'Chats' },
+            { key: 'profile', icon: '👤', label: 'Profile' },
+          ].map(({ key, icon, label }) => (
+            <div 
+              key={key}
+              onClick={() => setActiveTab(key)} 
+              className={`flex flex-col items-center justify-center p-1 cursor-pointer transition-opacity ${activeTab === key ? 'opacity-100 scale-110' : 'opacity-60 hover:opacity-80'}`}
+            >
+              <span className="text-3xl leading-none">{icon}</span>
+              <span className="text-xs font-semibold">{label}</span>
+            </div>
+          ))}
         </div>
-        <div onClick={() => setActiveTab("profile")} style={{ cursor: "pointer", opacity: activeTab === 'profile' ? 1 : 0.6, fontSize: '1.8rem', padding: '0 10px' }} title="Profile">
-          👤
-        </div>
-      </div>
+      )}
     </div>
   );
-}
+};
+
+export default App;
