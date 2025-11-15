@@ -1,15 +1,15 @@
 /* global __app_id */
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
-// 1. FIREBASE IMPORTS (Updated to include social auth providers)
+// --- FIREBASE IMPORTS ---
 import { initializeApp } from 'firebase/app';
 import { 
-    getAuth, 
-    onAuthStateChanged, 
-    GoogleAuthProvider,
-    GithubAuthProvider,
-    signInWithPopup,
-    signOut
+  getAuth, 
+  onAuthStateChanged, 
+  GoogleAuthProvider,
+  GithubAuthProvider,
+  signInWithPopup,
+  signOut
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -24,29 +24,28 @@ import {
   orderBy,
   where,
   limit,
-  getDoc, // <--- ADDED: Fixes the 'getDoc is not defined' error
+  getDoc,
 } from 'firebase/firestore';
 
-// Global variables provided by the Canvas environment
+// --- GLOBAL VARIABLES ---
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'vercel-local-dev'; 
 const appId = rawAppId.split(/[\/\-]/)[0]; 
 
-// --- USER'S FIREBASE CONFIGURATION (Using the hardcoded configuration provided previously) ---
+// --- FIREBASE CONFIG (FIXED storageBucket) ---
 const customFirebaseConfig = {
-    apiKey: "AIzaSyBRyHQf2IWzPoOrm8UsgcdJvDIxEQR2G40",
-    authDomain: "asa1db.firebaseapp.com",
-    projectId: "asa1db",
-    storageBucket: "asa1db.firebasestorage.app",
-    messagingSenderId: "195882381688",
-    appId: "1:195882381688:web:b1d8e1f5a73e6b7c2d13b4"
+  apiKey: "AIzaSyBRyHQf2IWzPoOrm8UsgcdJvDIxEQR2G40",
+  authDomain: "asa1db.firebaseapp.com",
+  projectId: "asa1db",
+  storageBucket: "asa1db.appspot.com", // ✅ FIXED
+  messagingSenderId: "195882381688",
+  appId: "1:195882381688:web:b1d8e1f5a73e6b7c2d13b4"
 };
 
 // --- CONSTANTS ---
-const HEADER_HEIGHT = 60; // in pixels
-const NAV_HEIGHT = 60; // in pixels
+const HEADER_HEIGHT = 60;
+const NAV_HEIGHT = 60;
 
-// --- FIREBASE INITIALIZATION & AUTH ---
-
+// --- FIREBASE INITIALIZATION ---
 let firebaseApp, db, auth;
 let isFirebaseInitialized = false;
 
@@ -64,7 +63,6 @@ const initFirebase = () => {
 };
 
 // --- UTILITY COMPONENTS ---
-
 const SystemModal = ({ message = "Authentication or operation in progress...", onClose }) => (
   <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
     <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full text-center">
@@ -82,9 +80,7 @@ const SystemModal = ({ message = "Authentication or operation in progress...", o
   </div>
 );
 
-// --- Data Structures ---
-
-// Represents a single user's profile data
+// --- DATA STRUCTURES ---
 const defaultUserProfile = {
   uid: '',
   displayName: 'Guest User',
@@ -94,7 +90,6 @@ const defaultUserProfile = {
   bio: 'A user on the platform.',
 };
 
-// Represents a single post (or "artifact")
 const defaultPost = {
   id: '',
   userId: '',
@@ -107,19 +102,13 @@ const defaultPost = {
 };
 
 // --- FIRESTORE HELPERS ---
-
-// Path for private user data (e.g., user profile, likes)
 const getUserDocRef = (uid) => doc(db, 'artifacts', appId, 'users', uid, 'userProfile', 'data');
 const getLikesCollectionRef = (uid) => collection(db, 'artifacts', appId, 'users', uid, 'likes');
-
-// Path for public data (e.g., posts, chats)
 const getPublicCollectionRef = (name) => collection(db, 'artifacts', appId, 'public', 'data', name);
 const POSTS_REF = getPublicCollectionRef('posts');
 
-// --- TABS (Content Components) ---
-
-// Home Content (Feed)
-const HomeContent = ({ user, db, auth, posts, userLikes, isLoading, handleLikePost }) => {
+// --- CONTENT COMPONENTS ---
+const HomeContent = ({ user, posts, userLikes, isLoading, handleLikePost }) => {
   if (isLoading) return <div className="p-4 text-center text-gray-500">Loading feed...</div>;
   if (posts.length === 0) return <div className="p-4 text-center text-gray-500">No posts yet. Be the first to post!</div>;
 
@@ -165,7 +154,6 @@ const HomeContent = ({ user, db, auth, posts, userLikes, isLoading, handleLikePo
   );
 };
 
-// Chat List Content (Placeholder)
 const ChatList = () => (
   <div className="p-4">
     <h2 className="text-2xl font-bold text-gray-800 mb-4">Chats</h2>
@@ -175,7 +163,6 @@ const ChatList = () => (
   </div>
 );
 
-// Profile Content
 const ProfileContent = ({ user, userProfile, handleSignOut }) => {
   const profile = userProfile || defaultUserProfile;
 
@@ -189,9 +176,7 @@ const ProfileContent = ({ user, userProfile, handleSignOut }) => {
         />
         <h2 className="text-3xl font-extrabold text-gray-900">{profile.displayName}</h2>
         <p className="text-sm text-gray-500 mb-4">User ID: <span className="text-xs font-mono break-all">{profile.uid || 'N/A'}</span></p>
-        
         <p className="text-gray-700 italic mb-6">"{profile.bio}"</p>
-
         <div className="flex justify-around text-lg font-semibold border-t pt-4">
           <div className="text-center">
             <p className="text-blue-600">{profile.followerCount}</p>
@@ -209,7 +194,6 @@ const ProfileContent = ({ user, userProfile, handleSignOut }) => {
           onClick={handleSignOut}
           className="w-full flex items-center justify-center px-4 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg hover:bg-red-700 transition duration-150"
         >
-          {/* Replaced lucide-react icon with a hand wave emoji */}
           <span className="mr-2 text-xl">👋</span>
           Sign Out
         </button>
@@ -222,8 +206,7 @@ const ProfileContent = ({ user, userProfile, handleSignOut }) => {
     </div>
   );
 };
-
-// Post Creation Component
+// --- POST CREATOR ---
 const PostCreator = ({ user, userProfile }) => {
   const [content, setContent] = useState('');
   const [isPosting, setIsPosting] = useState(false);
@@ -250,7 +233,6 @@ const PostCreator = ({ user, userProfile }) => {
       };
 
       await addDoc(POSTS_REF, newPost);
-
       setContent('');
     } catch (e) {
       console.error("Error adding document: ", e);
@@ -273,7 +255,7 @@ const PostCreator = ({ user, userProfile }) => {
       <textarea
         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition"
         rows="3"
-        placeholder={`What's on your mind, ${userProfile.displayName}?`}
+        placeholder={`What's on your mind, ${userProfile.displayName || 'friend'}?`}
         value={content}
         onChange={(e) => {
           setContent(e.target.value);
@@ -297,30 +279,27 @@ const PostCreator = ({ user, userProfile }) => {
   );
 };
 
-
 // --- MAIN APP COMPONENT ---
-
 const App = () => {
   const [activeTab, setActiveTab] = useState("home");
-  const [user, setUser] = useState(null); // Firebase User object
-  const [userProfile, setUserProfile] = useState(defaultUserProfile); // User's custom profile data
+  const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(defaultUserProfile);
   const [posts, setPosts] = useState([]);
-  const [userLikes, setUserLikes] = useState({}); // { postId: true/false }
+  const [userLikes, setUserLikes] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [modalMessage, setModalMessage] = useState('');
 
-  // 1. INITIALIZATION & AUTH LISTENER
+  // 1) Initialize Firebase and listen to auth
   useEffect(() => {
-    initFirebase();
+    initFirebase(); // Ensure db/auth are set before other effects
     if (!auth) return;
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setIsLoading(false);
-      
+
       if (currentUser) {
-        // Automatically create/fetch profile on sign-in
         await fetchOrCreateUserProfile(currentUser);
       } else {
         setUserProfile(defaultUserProfile);
@@ -331,21 +310,16 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. DATA FETCHERS (useEffect for all real-time data)
-
-  // Fetch Posts
+  // 2) Fetch Posts (run once after init; effect order ensures init runs first)
   useEffect(() => {
     if (!db || !isFirebaseInitialized) return;
 
-    // Fetch the 50 most recent posts
     const q = query(POSTS_REF, orderBy('timestamp', 'desc'), limit(50));
-    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        // Convert Firebase Timestamp to a JS date object or ensure it's a number
-        timestamp: doc.data().timestamp?.toDate()?.getTime() || Date.now()
+        timestamp: doc.data().timestamp?.toDate()?.getTime() || Date.now(),
       }));
       setPosts(fetchedPosts);
     }, (error) => {
@@ -353,9 +327,9 @@ const App = () => {
     });
 
     return () => unsubscribe();
-  }, [isLoading]); // Depend on isLoading to ensure auth is checked
+  }, []); // run once
 
-  // Fetch User Likes
+  // 3) Fetch User Likes when user changes
   useEffect(() => {
     if (!db || !user || !isFirebaseInitialized) return;
 
@@ -365,7 +339,6 @@ const App = () => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const likesMap = {};
       snapshot.docs.forEach(doc => {
-        // Doc ID is the postId, value is always true
         likesMap[doc.id] = true;
       });
       setUserLikes(likesMap);
@@ -374,17 +347,15 @@ const App = () => {
     });
 
     return () => unsubscribe();
-  }, [user, isLoading]);
+  }, [user]);
 
-  // 3. AUTHENTICATION HANDLERS
-
+  // Auth helpers
   const fetchOrCreateUserProfile = async (currentUser) => {
     if (!db || !currentUser) return;
 
     const profileRef = getUserDocRef(currentUser.uid);
-    
     try {
-      const docSnap = await getDoc(profileRef); // Use getDoc, not onSnapshot here for initial read
+      const docSnap = await getDoc(profileRef);
 
       if (docSnap.exists()) {
         const profileData = docSnap.data();
@@ -392,10 +363,9 @@ const App = () => {
           uid: currentUser.uid,
           displayName: currentUser.displayName || profileData.displayName || 'New User',
           photoURL: currentUser.photoURL || profileData.photoURL || '',
-          ...profileData, // Overwrite with firestore data
+          ...profileData,
         });
       } else {
-        // Create initial profile if it doesn't exist
         const initialProfile = {
           uid: currentUser.uid,
           displayName: currentUser.displayName || 'New User',
@@ -430,7 +400,6 @@ const App = () => {
 
     try {
       await signInWithPopup(auth, provider);
-      // Auth state listener handles setting the user and fetching profile
     } catch (error) {
       console.error("Sign-in error:", error);
       setModalMessage(`Sign-in failed: ${error.message}`);
@@ -453,14 +422,13 @@ const App = () => {
     }
   };
 
-  // 4. BUSINESS LOGIC HANDLERS
-
+  // Business logic
   const handleLikePost = useCallback(async (postId, currentlyLiked) => {
     if (!db || !user) {
-        setModalMessage("Please sign in to like posts.");
-        setShowModal(true);
-        setTimeout(() => setShowModal(false), 2000);
-        return;
+      setModalMessage("Please sign in to like posts.");
+      setShowModal(true);
+      setTimeout(() => setShowModal(false), 2000);
+      return;
     }
 
     const postRef = doc(POSTS_REF, postId);
@@ -468,47 +436,40 @@ const App = () => {
     const delta = currentlyLiked ? -1 : 1;
 
     try {
-        await runTransaction(db, async (transaction) => {
-            // 1. Update the Post's like count
-            const postDoc = await transaction.get(postRef);
-            if (!postDoc.exists()) {
-                throw new Error("Post does not exist!");
-            }
-            const newLikeCount = (postDoc.data().likeCount || 0) + delta;
-            transaction.update(postRef, { likeCount: newLikeCount < 0 ? 0 : newLikeCount });
+      await runTransaction(db, async (transaction) => {
+        const postDoc = await transaction.get(postRef);
+        if (!postDoc.exists()) {
+          throw new Error("Post does not exist!");
+        }
+        const newLikeCount = (postDoc.data().likeCount || 0) + delta;
+        transaction.update(postRef, { likeCount: newLikeCount < 0 ? 0 : newLikeCount });
 
-            // 2. Update the User's like status
-            if (currentlyLiked) {
-                // Remove the like record
-                transaction.delete(likeDocRef);
-            } else {
-                // Add the like record
-                transaction.set(likeDocRef, { liked: true, timestamp: serverTimestamp() });
-            }
-        });
+        if (currentlyLiked) {
+          transaction.delete(likeDocRef);
+        } else {
+          transaction.set(likeDocRef, { liked: true, timestamp: serverTimestamp() });
+        }
+      });
 
-        // Optimistically update the local state for faster UI response
-        setUserLikes(prev => {
-          const newLikes = { ...prev };
-          if (currentlyLiked) {
-            delete newLikes[postId];
-          } else {
-            newLikes[postId] = true;
-          }
-          return newLikes;
-        });
+      setUserLikes(prev => {
+        const newLikes = { ...prev };
+        if (currentlyLiked) {
+          delete newLikes[postId];
+        } else {
+          newLikes[postId] = true;
+        }
+        return newLikes;
+      });
 
     } catch (e) {
-        console.error("Transaction failed: ", e);
-        setModalMessage("Failed to update like count. Try again.");
-        setShowModal(true);
-        setTimeout(() => setShowModal(false), 2000);
+      console.error("Transaction failed: ", e);
+      setModalMessage("Failed to update like count. Try again.");
+      setShowModal(true);
+      setTimeout(() => setShowModal(false), 2000);
     }
   }, [db, user]);
 
-
-  // 5. RENDER LOGIC
-
+  // Render content
   const renderContent = () => {
     if (isLoading) {
       return <SystemModal message="Initializing and checking authentication..." />;
@@ -535,18 +496,15 @@ const App = () => {
       );
     }
 
-    // Authenticated Content
     switch (activeTab) {
       case 'home':
         return (
           <div className="pt-4 pb-4">
             <PostCreator user={user} userProfile={userProfile} />
             <HomeContent 
-              user={user} 
-              db={db} 
-              auth={auth} 
-              posts={posts} 
-              userLikes={userLikes} 
+              user={user}
+              posts={posts}
+              userLikes={userLikes}
               isLoading={isLoading}
               handleLikePost={handleLikePost}
             />
@@ -557,15 +515,15 @@ const App = () => {
       case 'profile':
         return <ProfileContent user={user} userProfile={userProfile} handleSignOut={handleSignOut} />;
       default:
-        return <HomeContent 
-          user={user} 
-          db={db} 
-          auth={auth} 
-          posts={posts} 
-          userLikes={userLikes} 
-          isLoading={isLoading}
-          handleLikePost={handleLikePost}
-        />;
+        return (
+          <HomeContent 
+            user={user}
+            posts={posts}
+            userLikes={userLikes}
+            isLoading={isLoading}
+            handleLikePost={handleLikePost}
+          />
+        );
     }
   };
 
@@ -580,12 +538,12 @@ const App = () => {
           SocialHub
         </h1>
         <div className="flex items-center space-x-2">
-            <img 
-              src={userProfile.photoURL || 'https://placehold.co/30x30/ccc/fff?text=U'} 
-              alt="Profile" 
-              className="w-8 h-8 rounded-full object-cover border border-gray-300"
-            />
-            <span className="text-sm font-semibold text-gray-700 hidden sm:inline">{userProfile.displayName}</span>
+          <img 
+            src={userProfile.photoURL || 'https://placehold.co/30x30/ccc/fff?text=U'} 
+            alt="Profile" 
+            className="w-8 h-8 rounded-full object-cover border border-gray-300"
+          />
+          <span className="text-sm font-semibold text-gray-700 hidden sm:inline">{userProfile.displayName}</span>
         </div>
       </header>
 
@@ -604,7 +562,12 @@ const App = () => {
       </main>
 
       {/* System Modal */}
-      {showModal && <SystemModal message={modalMessage} onClose={modalMessage.includes('failed') ? () => setShowModal(false) : undefined} />}
+      {showModal && (
+        <SystemModal 
+          message={modalMessage} 
+          onClose={modalMessage.includes('failed') ? () => setShowModal(false) : undefined} 
+        />
+      )}
 
       {/* Bottom Navigation Bar */}
       {user && (
@@ -616,7 +579,6 @@ const App = () => {
             height: `${NAV_HEIGHT}px`,
           }}
         >
-          {/* Emojis used instead of lucide-react icons */}
           {[
             { key: 'home', icon: '🏠', label: 'Home' },
             { key: 'chats', icon: '💬', label: 'Chats' },
@@ -636,5 +598,4 @@ const App = () => {
     </div>
   );
 };
-
 export default App;
