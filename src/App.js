@@ -1,10 +1,9 @@
 import { Route, Routes, Navigate } from "react-router-dom";
 import "./App.css";
-import HomePage from "./pages/HomePage";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import ProtectedRoute from "./pages/ProtectedRoute";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   const isLoggedIn = localStorage.getItem("token"); // session check
@@ -30,18 +29,10 @@ function App() {
           }
         />
 
-        {/* Default route: if logged in → dashboard, else → home */}
+        {/* Default route: if logged in → dashboard, else → login */}
         <Route
           path="/"
-          element={
-            isLoggedIn ? (
-              <Navigate to="/dashboard" />
-            ) : (
-              <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-                <HomePage />
-              </div>
-            )
-          }
+          element={isLoggedIn ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
         />
 
         {/* Protected Dashboard */}
