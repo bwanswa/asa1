@@ -27,19 +27,19 @@ function App() {
             </div>
           }
         />
-        //<Route
-          //path="/"
-          //element={
-            //<div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              //<HomePage />
-            //</div>
-          //}
-        //>
+        <Route
+          path="/"
+          element={
+            <div className="max-w-[90%] md:max-w-[50%] mx-auto">
+              <HomePage />
+            </div>
+          }
+        />
         <Route
           path="/profile"
           element={
             <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              //<Profile />
+              <Profile />
             </div>
           }
         />
