@@ -31,7 +31,7 @@ function App() {
           path="/"
           element={
             <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              <HomePage />
+              //<HomePage />
             </div>
           }
         />
@@ -39,7 +39,7 @@ function App() {
           path="/profile"
           element={
             <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              <Profile />
+              //<Profile />
             </div>
           }
         />
