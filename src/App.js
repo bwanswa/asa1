@@ -3,7 +3,6 @@ import "./App.css";
 import HomePage from "./pages/HomePage";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
-import Profile from "./pages/Profile";
 import Dashboard from "./pages/Dashboard";
 
 function App() {
@@ -32,14 +31,6 @@ function App() {
           element={
             <div className="max-w-[90%] md:max-w-[50%] mx-auto">
               <HomePage />
-            </div>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              <Profile />
             </div>
           }
         />
