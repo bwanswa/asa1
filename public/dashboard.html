@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASA — Dashboard</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Segoe UI', sans-serif;
+      background: #fdfdfd;
+      color: #222;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      background: linear-gradient(to right, #006400, #FFD700, #8B0000);
+      height: 40px;
+    }
+
+    .logo img {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .header-text {
+      font-size: 0.9rem;
+      font-weight: bold;
+      color: white;
+    }
+
+    .dashboard {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: auto;
+    }
+
+    .dashboard-columns {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .column.settings {
+      flex: 1;
+      position: relative;
+      padding: 1rem;
+      overflow: hidden;
+    }
+
+    .search-box {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    .search-box input[type="text"] {
+      width: 100%;
+      max-width: 500px;
+      padding: 0.5rem 1rem;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      outline: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .video-scroll {
+      flex: 1;
+      overflow-x: scroll;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      align-items: center;
+      padding-bottom: 20px;
+      scrollbar-width: auto;
+    }
+
+    .video-scroll::-webkit-scrollbar { height: 8px; }
+    .video-scroll::-webkit-scrollbar-track { background: #eee; }
+    .video-scroll::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+    .video-scroll::-webkit-scrollbar-thumb:hover { background: #555; }
+
+    .video-track {
+      display: flex;
+      gap: 1rem;
+      padding: 0 1rem;
+    }
+
+    .video-track video {
+      height: calc(100vh - 40px - 32px - 20px - 15vh); /* EXACT original sizing */
+      width: auto;
+      scroll-snap-align: start;
+      border-radius: 8px;
+      background: #000;
+      flex-shrink: 0;
+    }
+
+    .bottom-menu {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-around;
+      background-color: #006400;
+      padding: 0.4rem 0;
+      height: 32px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .bottom-menu a {
+      color: white;
+      font-weight: bold;
+      font-size: 0.9rem;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    /* Ribbon (used in Upload/Profile placeholders) */
+    .ribbon {
+      display: inline-block;
+      background: #FFD700;
+      color: #3b2f00;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    /* Chats layout */
+    .chats-layout {
+      display: flex;
+      height: calc(100vh - 40px - 32px - 2rem); /* header + bottom menu + padding approx */
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .contacts-pane {
+      width: 30%;
+      min-width: 220px;
+      border-right: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .contacts-header {
+      padding: 8px 10px;
+      background: #f7f7f7;
+      border-bottom: 1px solid #ddd;
+      font-weight: bold;
+    }
+
+    .contacts-search {
+      padding: 8px 10px;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      gap: 8px;
+    }
+
+    .contacts-search input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 16px;
+      outline: none;
+      font-size: 0.9rem;
+    }
+
+    .contacts-search button {
+      padding: 6px 12px;
+      border: none;
+      background: #006400;
+      color: white;
+      border-radius: 16px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .contacts-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .contact {
+      padding: 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .contact:hover { background: #f0f0f0; }
+
+    .contact-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #ddd;
+      flex-shrink: 0;
+    }
+
+    .contact-name {
+      font-weight: 600;
+    }
+
+    .chat-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .chat-header {
+      padding: 8px 12px;
+      background: #f7f7f7;
+      border-bottom: 1px solid #ddd;
+      font-weight: bold;
+    }
+
+    .chat-messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      background: #f0f0f0;
+    }
+
+    .message {
+      max-width: 70%;
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      border-radius: 16px;
+      font-size: 0.9rem;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+
+    .message.sent {
+      background: #006400;
+      color: white;
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.received {
+      background: #ddd;
+      color: #222;
+      margin-right: auto;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-input {
+      display: flex;
+      padding: 8px;
+      background: white;
+      border-top: 1px solid #ccc;
+      gap: 8px;
+    }
+
+    .chat-input input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      outline: none;
+      font-size: 0.9rem;
+    }
+
+    .chat-input button {
+      padding: 8px 16px;
+      background: #006400;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <img src="../asa-logo.png" alt="ASA Logo" />
+  </div>
+  <div class="header-right">
+    <div class="header-text">Welcome, Deogratious</div>
+    <a href="../logout.php" style="color:white; font-weight:bold;">Logout</a>
+  </div>
+</header>
+
+<div class="dashboard">
+  <div class="dashboard-columns" id="dashboard-content">
+    <!-- Default Home view (unchanged) -->
+    <div class="column settings">
+      <div class="search-box">
+        <input type="text" placeholder="Search ASA..." onkeydown="if(event.key === 'Enter') performSearch(this.value)" />
+      </div>
+      <div class="video-scroll">
+        <div class="video-track">
+          <video src="videos/video1.mp4" controls></video>
+          <video src="videos/video2.mp4" controls></video>
+          <video src="videos/video3.mp4" controls></video>
+          <video src="videos/video4.mp4" controls></video>
+          <video src="videos/video5.mp4" controls></video>
+          <video src="videos/video6.mp4" controls></video>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-menu">
+  <a onclick="loadHome()">Home</a>
+  <a onclick="loadChats()">Chats</a>
+  <a onclick="loadUpload()">Upload</a>
+  <a onclick="loadProfile()">Profile</a>
+</div>
+
+<script>
+  // Keep functions global for inline onclick reliability
+  function performSearch(query) {
+    alert("Search for: " + query);
+  }
+
+  function loadHome() {
+    const content = document.getElementById('dashboard-content');
+    content.innerHTML = `
+      <div class="column settings">
+        <div class="search-box">
+          <input type="text" placeholder="Search ASA..." onkeydown="if(event.key === 'Enter') performSearch(this.value)" />
+        </div>
+        <div class="video-scroll">
+          <div class="video-track">
+            <video src="ASA/profile/videos/video1.mp4" controls></video>
+            <video src="ASA/profile/videos/video2.mp4" controls></video>
+            <video src="ASA/profile/videos/video3.mp4" controls></video>
+            <video src="ASA/profile/videos/video4.mp4" controls></video>
+            <video src="ASA/profile/videos/video5.mp4" controls></video>
+            <video src="ASA/profile/videos/video6.mp4" controls></video>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function loadChats() {
+    const content = document.getElementById('dashboard-content');
+    content.innerHTML = `
+      <div class="column settings">
+        <div class="chats-layout">
+          <!-- Contacts pane -->
+          <div class="contacts-pane">
+            <div class="contacts-header">Contacts</div>
+            <div class="contacts-search">
+              <input type="text" id="contactSearch" placeholder="Search or add a friend..." oninput="filterContacts()" />
+              <button onclick="addFriend()">Add</button>
+            </div>
+            <div class="contacts-list" id="contactsList">
+              <!-- Contacts injected here -->
+            </div>
+          </div>
+
+          <!-- Chat pane -->
+          <div class="chat-pane">
+            <div class="chat-header" id="chatHeader">Select a friend to start chatting</div>
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input">
+              <input type="text" id="chatInput" placeholder="Type a message and press Enter..." onkeydown="if(event.key==='Enter'){sendMessage();}" />
+              <button onclick="sendMessage()">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Initialize contacts and default state
+    initContacts();
+  }
+
+  function loadUpload() {
+    const content = document.getElementById('dashboard-content');
+    content.innerHTML = `
+      <div class="column settings">
+        <div class="ribbon">Upload</div>
+        <h2>Upload</h2>
+        <p>Upload your content here.</p>
+      </div>
+    `;
+  }
+
+  function loadProfile() {
+    const content = document.getElementById('dashboard-content');
+    content.innerHTML = `
+      <div class="column settings">
+        <div class="ribbon">Profile</div>
+        <h2>Profile</h2>
+        <p>Manage your profile settings.</p>
+      </div>
+    `;
+  }
+
+  // --- Chats logic ---
+  // Demo data
+  const demoContacts = [
+    { id: 'fiona', name: 'Fiona' },
+    { id: 'amos', name: 'Amos' },
+    { id: 'aisha', name: 'Aisha' },
+    { id: 'david', name: 'David' },
+    { id: 'kevin', name: 'Kevin' }
+  ];
+
+  const chats = {
+    fiona: [
+      { from: 'them', text: 'Hi Deogratious! How is ASA going?' },
+      { from: 'me', text: 'Pushing hard. We’re shaping the dashboard.' }
+    ],
+    amos: [
+      { from: 'them', text: 'Can we sync later on the media feed?' }
+    ],
+    aisha: [],
+    david: [],
+    kevin: []
+  };
+
+  let activeFriendId = null;
+
+  function initContacts() {
+    const list = document.getElementById('contactsList');
+    list.innerHTML = '';
+    demoContacts.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'contact';
+      item.setAttribute('data-id', c.id);
+      item.onclick = () => selectFriend(c.id);
+      item.innerHTML = `
+        <div class="contact-avatar"></div>
+        <div class="contact-name">${c.name}</div>
+      `;
+      list.appendChild(item);
+    });
+    // Clear chat view initially
+    document.getElementById('chatHeader').textContent = 'Select a friend to start chatting';
+    document.getElementById('chatMessages').innerHTML = '';
+    activeFriendId = null;
+  }
+
+  function filterContacts() {
+    const q = (document.getElementById('contactSearch').value || '').toLowerCase();
+    const list = document.getElementById('contactsList');
+    const items = list.querySelectorAll('.contact');
+    items.forEach(item => {
+      const name = item.querySelector('.contact-name').textContent.toLowerCase();
+      item.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+  }
+
+  function addFriend() {
+    const nameRaw = prompt('Enter friend name:');
+    if (!nameRaw) return;
+    const name = nameRaw.trim();
+    if (!name) return;
+
+    // Make an id from name
+    const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+    // Avoid duplicates
+    if (demoContacts.some(c => c.id === id)) {
+      alert('Friend already exists.');
+      return;
+    }
+    demoContacts.push({ id, name });
+    chats[id] = [];
+    initContacts();
+    alert('Friend added.');
+  }
+
+  function selectFriend(friendId) {
+    activeFriendId = friendId;
+    const friend = demoContacts.find(c => c.id === friendId);
+    const header = document.getElementById('chatHeader');
+    const messagesEl = document.getElementById('chatMessages');
+
+    header.textContent = friend ? friend.name : 'Chat';
+    messagesEl.innerHTML = '';
+
+    const history = chats[friendId] || [];
+    history.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'message ' + (m.from === 'me' ? 'sent' : 'received');
+      div.textContent = m.text;
+      messagesEl.appendChild(div);
+    });
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function sendMessage() {
+    const input = document.getElementById('chatInput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    if (!activeFriendId) {
+      alert('Select a friend from the left to start chatting.');
+      return;
+    }
+
+    const messagesEl = document.getElementById('chatMessages');
+
+    // Append my message
+    const mine = document.createElement('div');
+    mine.className = 'message sent';
+    mine.textContent = text;
+    messagesEl.appendChild(mine);
+
+    // Persist in chats
+    if (!chats[activeFriendId]) chats[activeFriendId] = [];
+    chats[activeFriendId].push({ from: 'me', text });
+
+    input.value = '';
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+    // Simulate reply
+    setTimeout(() => {
+      const replyText = 'Got it: ' + text;
+      const reply = document.createElement('div');
+      reply.className = 'message received';
+      reply.textContent = replyText;
+      messagesEl.appendChild(reply);
+
+      chats[activeFriendId].push({ from: 'them', text: replyText });
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }, 800);
+  }
+</script>
+
+</body>
+</html>
