@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useSwipeable } from "react-swipeable";
+// Removed: import { useSwipeable } from "react-swipeable";
 
 // ---------------------------
 // VIDEO LIST
@@ -20,15 +20,9 @@ const Dashboard = () => {
   const [progress, setProgress] = useState(0);
 
   const videoRef = useRef(null);
-
-  // ---------------------------
-  // SWIPE
-  // ---------------------------
-  const swipe = useSwipeable({
-    onSwipedLeft: () => nextVideo(),
-    onSwipedRight: () => prevVideo(),
-    trackMouse: true,
-  });
+  const touchStartRef = useRef(0);
+  const touchEndRef = useRef(0);
+  const minSwipeDistance = 50; // Minimum pixels for a recognized swipe
 
   const nextVideo = () => {
     setIndex((i) => (i + 1) % videos.length);
@@ -38,6 +32,39 @@ const Dashboard = () => {
   const prevVideo = () => {
     setIndex((i) => (i - 1 + videos.length) % videos.length);
     setProgress(0);
+  };
+
+  // ---------------------------
+  // NATIVE SWIPE IMPLEMENTATION (Replacing react-swipeable)
+  // ---------------------------
+  const handleTouchStart = (e) => {
+    // Record the starting X position of the touch
+    touchEndRef.current = 0; // Reset end position
+    touchStartRef.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    // Record the current X position of the touch
+    touchEndRef.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current || !touchEndRef.current) return;
+    const distance = touchStartRef.current - touchEndRef.current;
+    const isHorizontalSwipe = Math.abs(distance) > minSwipeDistance;
+
+    if (isHorizontalSwipe) {
+      if (distance > 0) {
+        // Swiped Left (distance is positive) -> Next video
+        nextVideo();
+      } else {
+        // Swiped Right (distance is negative) -> Previous video
+        prevVideo();
+      }
+    }
+    // Reset positions
+    touchStartRef.current = 0;
+    touchEndRef.current = 0;
   };
 
   // ---------------------------
@@ -72,6 +99,7 @@ const Dashboard = () => {
     if (likes[index]) return;
     setLikes((prev) => ({ ...prev, [index]: true }));
 
+    // Visual feedback for like (Heart animation)
     const heart = document.createElement("div");
     heart.innerHTML = "🔥❤️";
     heart.style.position = "absolute";
@@ -82,7 +110,8 @@ const Dashboard = () => {
     heart.style.fontSize = "3rem";
     heart.style.opacity = "1";
     heart.style.transition = "opacity 1s, transform 1s";
-    document.getElementById("video-wrapper").appendChild(heart);
+    // Using videoRef.current.parentElement to safely target the wrapper
+    videoRef.current?.parentElement?.appendChild(heart); 
 
     setTimeout(() => {
       heart.style.opacity = "0";
@@ -115,10 +144,22 @@ const Dashboard = () => {
           url: videos[index].src,
         });
       } else {
-        navigator.clipboard.writeText(videos[index].src);
-        alert("Link copied!");
+        // Fallback for sharing (copied to clipboard, using console log instead of alert)
+        document.execCommand('copy', false, videos[index].src);
+        console.log("Link copied to clipboard!");
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error("Share failed:", err);
+    }
+  };
+
+  // ---------------------------
+  // LOGOUT
+  // ---------------------------
+  const handleLogout = () => {
+    // Mock logout logic: log event and switch to home view
+    console.log("User successfully logged out (Mock Action).");
+    setActiveTab("home");
   };
 
   // ---------------------------
@@ -126,10 +167,12 @@ const Dashboard = () => {
   // ---------------------------
   const HomePage = () => (
     <div
-      {...swipe}
       id="video-wrapper"
       onClick={handleLike}
-      style={{ position: "relative", height: "100%", width: "100%", background: "black" }}
+      onTouchStart={handleTouchStart} // Native swipe events added here
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ position: "relative", height: "100%", width: "100%", background: "black", touchAction: 'pan-y' }}
     >
       <video
         ref={videoRef}
@@ -141,27 +184,44 @@ const Dashboard = () => {
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
 
-      <div style={{ position: "absolute", top: 20, left: 20, color: "white", fontSize: "1.2rem", fontWeight: "bold" }}>
+      {/* Video Title and Navigation Helpers */}
+      <div style={{ position: "absolute", top: 20, left: 20, color: "white", fontSize: "1.2rem", fontWeight: "bold", textShadow: "0 0 5px black" }}>
         {videos[index].title}
       </div>
 
+      {/* Action Buttons (Like, Comment, Share) */}
       <div style={{ position: "absolute", right: 15, bottom: 120, display: "flex", flexDirection: "column", gap: "20px", color: "white", fontSize: "2rem" }}>
-        <div onClick={handleLike} style={{ cursor: "pointer" }}>{likes[index] ? "🔥❤️" : "🤍"}</div>
-        <div onClick={() => setShowComments(true)} style={{ cursor: "pointer" }}>💬</div>
-        <div onClick={shareVideo} style={{ cursor: "pointer" }}>🔗</div>
+        {/* Like Button */}
+        <div onClick={(e) => { e.stopPropagation(); handleLike(); }} style={{ cursor: "pointer" }}>{likes[index] ? "🔥❤️" : "🤍"}</div>
+        {/* Comment Button */}
+        <div onClick={(e) => { e.stopPropagation(); setShowComments(true); }} style={{ cursor: "pointer" }}>💬</div>
+        {/* Share Button */}
+        <div onClick={(e) => { e.stopPropagation(); shareVideo(); }} style={{ cursor: "pointer" }}>🔗</div>
       </div>
 
+      {/* Progress Bar */}
       <div style={{ position: "absolute", bottom: 0, left: 0, width: `${progress}%`, height: "5px", background: "#FFD700" }} />
 
+      {/* Comments Drawer */}
       {showComments && (
-        <div style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "45%", background: "rgba(255,255,255,0.15)", backdropFilter: "blur(10px)", borderTopLeftRadius: "20px", borderTopRightRadius: "20px", padding: "15px", color: "white" }}>
-          <div style={{ textAlign: "center", marginBottom: "10px" }} onClick={() => setShowComments(false)}>⬇️ Close</div>
-          <div style={{ height: "60%", overflowY: "auto", marginBottom: "10px" }}>
-            {(comments[index] || []).map((c, i) => (<div key={i} style={{ marginBottom: "8px" }}>{c}</div>))}
+        <div 
+          onClick={(e) => e.stopPropagation()} // Prevent closing/liking the video when interacting with comments
+          style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "45%", background: "rgba(0,0,0,0.8)", backdropFilter: "blur(5px)", borderTopLeftRadius: "20px", borderTopRightRadius: "20px", padding: "15px", color: "white", display: "flex", flexDirection: "column" }}
+        >
+          <div style={{ textAlign: "center", marginBottom: "10px", fontWeight: "bold" }} onClick={() => setShowComments(false)} className="cursor-pointer">⬇️ Close</div>
+          <div style={{ flex: 1, overflowY: "auto", marginBottom: "10px", padding: "0 10px" }}>
+            {(comments[index] || []).map((c, i) => (<div key={i} style={{ marginBottom: "8px", background: "rgba(255,255,255,0.1)", padding: "5px 10px", borderRadius: "8px" }}>{c}</div>))}
+            {comments[index]?.length === 0 && <div style={{ textAlign: 'center', opacity: 0.7 }}>Be the first to comment!</div>}
           </div>
           <div style={{ display: "flex", gap: "10px" }}>
-            <input value={commentInput} onChange={(e) => setCommentInput(e.target.value)} placeholder="Add a comment…" style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "none" }} />
-            <button onClick={addComment} style={{ background: "#FFD700", border: "none", borderRadius: "10px", padding: "10px 15px", color: "black", fontWeight: "bold" }}>Send</button>
+            <input 
+              value={commentInput} 
+              onChange={(e) => setCommentInput(e.target.value)} 
+              onKeyDown={(e) => { if (e.key === 'Enter') addComment(); }}
+              placeholder="Add a comment…" 
+              style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "none", color: "black" }} 
+            />
+            <button onClick={addComment} style={{ background: "#FFD700", border: "none", borderRadius: "10px", padding: "10px 15px", color: "black", fontWeight: "bold", cursor: "pointer" }}>Send</button>
           </div>
         </div>
       )}
@@ -173,25 +233,109 @@ const Dashboard = () => {
   // ---------------------------
   const renderContent = () => {
     if (activeTab === "home") return <HomePage />;
-    if (activeTab === "chats") return <div style={{ padding: 20 }}><h2>💬 Chats</h2></div>;
-    if (activeTab === "profile") return <div style={{ padding: 20 }}><h2>👤 Profile</h2></div>;
+    if (activeTab === "chats") return <div style={{ padding: 20, color: 'white' }}><h2>💬 Chats</h2><p>Messages and real-time communication go here.</p></div>;
+    if (activeTab === "profile") return <div style={{ padding: 20, color: 'white' }}><h2>👤 Profile</h2><p>User settings and account information.</p></div>;
   };
+
+  const navButton = (tabName, icon, label) => (
+    <button
+      onClick={() => setActiveTab(tabName)}
+      style={{
+        background: 'none',
+        border: 'none',
+        color: activeTab === tabName ? '#FFD700' : 'white',
+        fontWeight: activeTab === tabName ? 'bold' : 'normal',
+        cursor: 'pointer',
+        padding: '5px 10px',
+        fontSize: '1rem',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '2px',
+        transition: 'color 0.2s'
+      }}
+    >
+      <span style={{ fontSize: '1.5rem' }}>{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
 
   return (
     <div style={{ width: "100%", minHeight: "100vh", background: "#000", display: "flex", flexDirection: "column" }}>
-      <header style={{ background: "linear-gradient(to right,#006400,#FFD700,#8B0000)", color: "white", padding: "15px 20px", fontWeight: "bold" }}>
-        ASA Dashboard
+      {/* HEADER with Logout Button */}
+      <header style={{ 
+        background: "linear-gradient(to right,#006400,#FFD700,#8B0000)", 
+        color: "white", 
+        padding: "15px 20px", 
+        fontWeight: "bold",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        zIndex: 10 // Ensure header is above main content
+      }}>
+        <span>ASA Dashboard</span>
+        
+        {/* LOGOUT BUTTON */}
+        <button
+          onClick={handleLogout}
+          style={{
+            background: "#8B0000",
+            color: "white",
+            border: "2px solid white",
+            borderRadius: "9999px", // Fully rounded
+            padding: "5px 15px",
+            cursor: "pointer",
+            fontWeight: "bold",
+            fontSize: "0.85rem",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+            transition: "background 0.2s, transform 0.1s",
+          }}
+          // Basic hover/active effects
+          onMouseOver={(e) => e.target.style.background = "#A52A2A"}
+          onMouseOut={(e) => e.target.style.background = "#8B0000"}
+          onMouseDown={(e) => e.target.style.transform = "scale(0.98)"}
+          onMouseUp={(e) => e.target.style.transform = "scale(1)"}
+        >
+          Logout
+        </button>
+
       </header>
 
-      <main style={{ flex: 1 }}>{renderContent()}</main>
+      <main style={{ flex: 1, overflowY: 'auto' }}>
+        {renderContent()}
+      </main>
 
-      <nav style={{ background: "linear-gradient(to right,#006400,#FFD700,#8B0000)", display: "flex", justifyContent: "space-around", padding: "10px 0", position: "fixed", bottom: 0, width: "100%", color: "white" }}>
-        <button onClick={() => setActiveTab("home")}>🎬 Home</button>
-        <button onClick={() => setActiveTab("chats")}>💬 Chats</button>
-        <button onClick={() => setActiveTab("profile")}>👤 Profile</button>
+      {/* NAVIGATION BAR */}
+      <nav style={{ 
+        background: "linear-gradient(to right,#006400,#FFD700,#8B0000)", 
+        display: "flex", 
+        justifyContent: "space-around", 
+        padding: "5px 0 10px 0", 
+        position: "fixed", 
+        bottom: 0, 
+        width: "100%", 
+        color: "white",
+        boxShadow: "0 -2px 10px rgba(0,0,0,0.5)",
+        zIndex: 10 
+      }}>
+        {navButton("home", "🎬", "Home")}
+        {navButton("chats", "💬", "Chats")}
+        {navButton("profile", "👤", "Profile")}
       </nav>
+      {/* Spacer div to prevent content from being hidden by fixed nav bar */}
+      <div style={{ height: '60px' }}></div> 
     </div>
   );
 };
 
-export default Dashboard;
+// Main App Component
+const App = () => {
+    // We use App as the main export as required for single-file React projects.
+    return (
+        <div style={{ fontFamily: 'Inter, sans-serif' }}>
+            <Dashboard />
+        </div>
+    );
+};
+
+export default App;
