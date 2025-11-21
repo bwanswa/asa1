@@ -155,10 +155,10 @@ const Dashboard = ({ setIsLoggedIn }) => {
   };
 
   // ---------------------------
-  // LOGOUT (UPDATED)
+  // LOGOUT
   // ---------------------------
   const handleLogout = () => {
-    // This calls the state setter passed from the parent App component
+    // This calls the state setter passed from the parent App component, triggering the login screen
     console.log("User successfully triggered logout.");
     if (setIsLoggedIn) {
         setIsLoggedIn(false); 
@@ -335,7 +335,8 @@ const Dashboard = ({ setIsLoggedIn }) => {
 // Main App Component (UPDATED to handle login state)
 const App = () => {
     // New state to manage the logged-in status
-    const [isLoggedIn, setIsLoggedIn] = useState(true);
+    // START HERE: Set to false to show the login screen initially
+    const [isLoggedIn, setIsLoggedIn] = useState(false); 
 
     const handleLogin = () => {
         console.log("User successfully performed mock login.");
@@ -343,15 +344,16 @@ const App = () => {
     };
 
     return (
-        <div style={{ fontFamily: 'Inter, sans-serif' }}>
+        // Adjusted height to ensure full viewport coverage
+        <div style={{ fontFamily: 'Inter, sans-serif', minHeight: '100vh', width: '100%' }}> 
             {isLoggedIn ? (
                 // If logged in, show the Dashboard and pass the setter function
                 <Dashboard setIsLoggedIn={setIsLoggedIn} /> 
             ) : (
                 // If logged out, show a mock login screen
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#000', color: 'white', padding: '20px' }}>
-                    <h1 style={{ marginBottom: '20px', color: '#FFD700', fontSize: '2rem' }}>👋 Logged Out</h1>
-                    <p style={{ marginBottom: '30px', textAlign: 'center' }}>You have been successfully logged out of the ASA Dashboard.</p>
+                    <h1 style={{ marginBottom: '20px', color: '#FFD700', fontSize: '2rem' }}>👋 Logged Out (Login Page)</h1>
+                    <p style={{ marginBottom: '30px', textAlign: 'center' }}>Please log in to access the ASA Dashboard.</p>
                     <button
                         onClick={handleLogin}
                         style={{
