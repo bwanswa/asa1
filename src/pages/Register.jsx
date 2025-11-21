@@ -40,7 +40,6 @@ const Register = () => {
         });
     }
   };
-
   // ✅ Redirect if session already active
   useEffect(() => {
     if (loading) return;
