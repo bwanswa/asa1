@@ -10,7 +10,8 @@ const videos = [
   { src: "https://sample-videos.com/video123/mp4/720/big_buck_bunny_720p_1mb.mp4", title: "Community Highlights" },
 ];
 
-const Dashboard = () => {
+// Dashboard now accepts a prop to handle the actual logout action in the parent App component
+const Dashboard = ({ setIsLoggedIn }) => {
   const [activeTab, setActiveTab] = useState("home");
   const [index, setIndex] = useState(0);
   const [likes, setLikes] = useState({});
@@ -154,13 +155,14 @@ const Dashboard = () => {
   };
 
   // ---------------------------
-  // LOGOUT
+  // LOGOUT (UPDATED)
   // ---------------------------
   const handleLogout = () => {
-    // Mock logout logic: log event and switch to home view
-    // In a real app, this is where Firebase/Auth logic would clear the session.
-    console.log("User successfully logged out (Mock Action).");
-    setActiveTab("home"); // Redirecting to the 'home' tab as a mock action
+    // This calls the state setter passed from the parent App component
+    console.log("User successfully triggered logout.");
+    if (setIsLoggedIn) {
+        setIsLoggedIn(false); 
+    }
   };
 
   // ---------------------------
@@ -330,12 +332,45 @@ const Dashboard = () => {
   );
 };
 
-// Main App Component
+// Main App Component (UPDATED to handle login state)
 const App = () => {
-    // We use App as the main export as required for single-file React projects.
+    // New state to manage the logged-in status
+    const [isLoggedIn, setIsLoggedIn] = useState(true);
+
+    const handleLogin = () => {
+        console.log("User successfully performed mock login.");
+        setIsLoggedIn(true);
+    };
+
     return (
         <div style={{ fontFamily: 'Inter, sans-serif' }}>
-            <Dashboard />
+            {isLoggedIn ? (
+                // If logged in, show the Dashboard and pass the setter function
+                <Dashboard setIsLoggedIn={setIsLoggedIn} /> 
+            ) : (
+                // If logged out, show a mock login screen
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#000', color: 'white', padding: '20px' }}>
+                    <h1 style={{ marginBottom: '20px', color: '#FFD700', fontSize: '2rem' }}>👋 Logged Out</h1>
+                    <p style={{ marginBottom: '30px', textAlign: 'center' }}>You have been successfully logged out of the ASA Dashboard.</p>
+                    <button
+                        onClick={handleLogin}
+                        style={{
+                            background: "#006400",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "10px",
+                            padding: "10px 30px",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            fontSize: "1rem",
+                            boxShadow: "0 4px 6px rgba(0,0,0,0.3)",
+                            transition: "background 0.2s, transform 0.1s",
+                        }}
+                    >
+                        Log In
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
