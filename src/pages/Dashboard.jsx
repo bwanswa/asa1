@@ -144,7 +144,7 @@ const Dashboard = () => {
           url: videos[index].src,
         });
       } else {
-        // Fallback for sharing (copied to clipboard, using console log instead of alert)
+        // Fallback for sharing (copied to clipboard, using execCommand instead of navigator.clipboard)
         document.execCommand('copy', false, videos[index].src);
         console.log("Link copied to clipboard!");
       }
@@ -158,8 +158,9 @@ const Dashboard = () => {
   // ---------------------------
   const handleLogout = () => {
     // Mock logout logic: log event and switch to home view
+    // In a real app, this is where Firebase/Auth logic would clear the session.
     console.log("User successfully logged out (Mock Action).");
-    setActiveTab("home");
+    setActiveTab("home"); // Redirecting to the 'home' tab as a mock action
   };
 
   // ---------------------------
@@ -168,7 +169,8 @@ const Dashboard = () => {
   const HomePage = () => (
     <div
       id="video-wrapper"
-      onClick={handleLike}
+      // Added stopPropagation to onClick to prevent accidental liks when user interacts with the container
+      onClick={(e) => e.stopPropagation()} 
       onTouchStart={handleTouchStart} // Native swipe events added here
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
@@ -206,7 +208,7 @@ const Dashboard = () => {
       {showComments && (
         <div 
           onClick={(e) => e.stopPropagation()} // Prevent closing/liking the video when interacting with comments
-          style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "45%", background: "rgba(0,0,0,0.8)", backdropFilter: "blur(5px)", borderTopLeftRadius: "20px", borderTopRightRadius: "20px", padding: "15px", color: "white", display: "flex", flexDirection: "column" }}
+          style={{ position: "absolute", bottom: 0, left: 0, width: "100%", height: "45%", background: "rgba(0,0,0,0.9)", backdropFilter: "blur(5px)", borderTopLeftRadius: "20px", borderTopRightRadius: "20px", padding: "15px", color: "white", display: "flex", flexDirection: "column" }}
         >
           <div style={{ textAlign: "center", marginBottom: "10px", fontWeight: "bold" }} onClick={() => setShowComments(false)} className="cursor-pointer">⬇️ Close</div>
           <div style={{ flex: 1, overflowY: "auto", marginBottom: "10px", padding: "0 10px" }}>
