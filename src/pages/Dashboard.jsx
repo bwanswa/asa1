@@ -943,7 +943,15 @@ const Dashboard = () => {
     };
 
     const Chats = () => (
-        <div style={{ padding: 20, color: "white", background: "#111", flex: 1, display: 'flex', flexDirection: 'column', height: '100%', paddingTop: '100px' }}>
+        <div style={{ 
+            padding: 20, 
+            color: "white", 
+            background: "#111", 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            height: '100%',
+        }}>
             <h2 style={{ color: '#FFD700', margin: '0 0 15px', textAlign: 'center', borderBottom: '2px solid #333', paddingBottom: '10px' }}>
                 💬 Global Chat
                 <div style={{ fontSize: '0.7rem', opacity: 0.7, fontWeight: 'normal', marginTop: '5px' }}>
@@ -954,11 +962,10 @@ const Dashboard = () => {
             <div 
                 ref={chatScrollRef}
                 style={{ 
-                    flex: 1, 
+                    flex: 1, // Using flex: 1 to fill available space
                     overflowY: 'auto', 
                     marginBottom: '15px', 
                     paddingRight: '10px',
-                    maxHeight: 'calc(100vh - 250px)' 
                 }}
             >
                 {/* Chat Messages List */}
@@ -1034,7 +1041,8 @@ const Dashboard = () => {
     return (
         <div
             style={{
-                height: "100vh",
+                minHeight: "100vh", // FIX 1: Use minHeight instead of fixed height
+                overflowY: "hidden", // FIX 2: Explicitly hide scrollbar on the main container
                 display: "flex",
                 flexDirection: "column",
                 fontFamily: "Inter, sans-serif",
@@ -1042,12 +1050,9 @@ const Dashboard = () => {
             }}
         >
             {/* -------------------- START OF CONTENT SWITCH -------------------- */}
+            {/* The flex: 1 on this container ensures it uses all available space between the header and footer */}
             <div style={{ flex: 1, position: 'relative', overflowY: 'hidden' }}>
                 {activeTab === "home" && <Home />}
-                {/* *** THIS IS THE SWITCH POINT TO CHATS ***
-                    When the activeTab state changes to "chats" (usually by clicking the nav button), 
-                    the Home component is hidden, and the Chats component is rendered.
-                */}
                 {activeTab === "chats" && <Chats />} 
             </div>
             {/* -------------------- END OF CONTENT SWITCH -------------------- */}
@@ -1066,7 +1071,6 @@ const Dashboard = () => {
                 }}
             >
                 <NavButton icon="🏠" label="Videos" active={activeTab === "home"} onClick={() => setActiveTab("home")} />
-                //chats edit
                 <NavButton icon="👥" label="Chat" active={activeTab === "chats"} onClick={() => setActiveTab("chats")} />
                 
                 <div style={{
@@ -1077,7 +1081,6 @@ const Dashboard = () => {
                     fontSize: '0.7rem',
                     opacity: 0.8
                 }}>
-                //end chats
                     <button 
                         onClick={userId ? handleLogout : signInWithGoogle} 
                         style={{ background: 'none', border: 'none', color: '#FFD700', cursor: 'pointer', fontSize: '1.5rem' }}
