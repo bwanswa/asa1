@@ -701,7 +701,7 @@ const Dashboard = () => {
         auth.signOut()
           .then(() => {
             // Redirect to login page after successful logout
-            window.location.href = "/Login.jsx"; 
+            window.location.href = "/Login"; 
           })
           .catch((error) => {
             console.error("Logout error:", error);
@@ -712,7 +712,7 @@ const Dashboard = () => {
       Logout
     </button>
   </p>
-              //end logout
+              
               
           </span>
         </header>
