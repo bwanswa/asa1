@@ -694,7 +694,7 @@ const Dashboard = () => {
             {/* --- LOGO INTEGRATION END --- */}
           <span style={{ fontSize: '0.7rem', fontWeight: 'normal', opacity: 0.8 }}>
              User: {userId ? auth.currentUser?.email || userId.substring(0, 8) + '...' : 'Guest'}
-              <p><ahref="Login.jsx">Logout</a></p>
+              <p><a href="Login.jsx">Logout</a></p>
           </span>
         </header>
 
