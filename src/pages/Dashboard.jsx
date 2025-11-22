@@ -694,7 +694,26 @@ const Dashboard = () => {
             {/* --- LOGO INTEGRATION END --- */}
           <span style={{ fontSize: '0.7rem', fontWeight: 'normal', opacity: 0.8 }}>
              User: {userId ? auth.currentUser?.email || userId.substring(0, 8) + '...' : 'Guest'}
-              <p><a href="Login.jsx">Logout</a></p>
+//logout
+               <p>
+    <button 
+      onClick={() => {
+        auth.signOut()
+          .then(() => {
+            // Redirect to login page after successful logout
+            window.location.href = "/Login.jsx"; 
+          })
+          .catch((error) => {
+            console.error("Logout error:", error);
+          });
+      }}
+      style={{ background: "none", border: "none", color: "blue", cursor: "pointer" }}
+    >
+      Logout
+    </button>
+  </p>
+              //end logout
+              
           </span>
         </header>
 
