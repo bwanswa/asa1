@@ -1,53 +1,27 @@
-import { Route, Routes } from "react-router-dom";
-import "./App.css";
-import HomePage from "./pages/HomePage";
-import Register from "./pages/Register";
-import Login from "./pages/Login";
-import Profile from "./pages/Profile";
-import Dashboard from "./pages/Dashboard";
+import React, { useEffect, useState } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { auth } from "./firebase";
+import Login from "./components/Login";
+import Dashboard from "./components/Dashboard";
 
 function App() {
-  return (
-    <div className="App">
-      <Routes>
-        {/* Compact pages */}
-        <Route
-          path="/login"
-          element={
-            <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              <Login />
-            </div>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              <Register />
-            </div>
-          }
-        />
-        <Route
-          path="/"
-          element={
-            <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              <HomePage />
-            </div>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <div className="max-w-[90%] md:max-w-[50%] mx-auto">
-              <Profile />
-            </div>
-          }
-        />
+  const [user, setUser] = useState(null);
 
-        {/* Full-width Dashboard */}
-        <Route path="/dashboard" element={<Dashboard />} />
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Login />} />
+        <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/" />} />
       </Routes>
-    </div>
+    </Router>
   );
 }
+
 export default App;
