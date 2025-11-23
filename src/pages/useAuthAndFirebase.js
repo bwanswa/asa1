@@ -1,20 +1,8 @@
 // pages/useAuthAndFirebase.js
 import { useState, useEffect } from "react";
-import { 
-    initializeApp 
-} from 'firebase/app';
-import { 
-    getAuth, 
-    onAuthStateChanged, 
-    GoogleAuthProvider,
-    GithubAuthProvider,
-    signInWithPopup,
-    signOut
-} from 'firebase/auth';
-import { 
-  getFirestore
-} from 'firebase/firestore'; 
+// ... (other Firebase imports)
 
+// --- FIREBASE CONFIGURATION (Using the hardcoded configuration provided previously) ---
 const customFirebaseConfig = {
     apiKey: "AIzaSyBRyHQF2IWzPoOrm8UsgcdJvDIxEQR2G40",
     authDomain: "asa1db.firebaseapp.com",
@@ -25,82 +13,19 @@ const customFirebaseConfig = {
 };
 
 let app = null;
-let db = null;
-let auth = null;
-
-try {
-  app = initializeApp(customFirebaseConfig);
-  db = getFirestore(app);
-  auth = getAuth(app);
-} catch (e) {
-  console.error("Firebase initialization failed:", e);
-}
+// ... (db and auth initialization)
 
 const googleProvider = new GoogleAuthProvider();
 const githubProvider = new GithubAuthProvider();
 
-// 🐛 FIX: Directly use the Project ID ('asa1db') since __app_id is undefined
-// This value is used in the Firestore paths (e.g., artifacts/asa1db/...)
+// FIX: Use the hardcoded Project ID as the App ID
 const rawAppId = 'asa1db'; 
-const appId = rawAppId; // No need to split since it's already clean
+// 👇 NEW: Export the static ID for use in other files
+export const STATIC_APP_ID = rawAppId; 
+const appId = rawAppId; 
 
 export const useAuthAndFirebase = (showSystemMessage) => {
-    const [isAuthReady, setIsAuthReady] = useState(false);
-    const [userId, setUserId] = useState(null);
-
-    // Listen for auth state changes
-    useEffect(() => {
-        if (!auth || !db) {
-            console.warn("Firebase services not initialized. Running in Read-Only / Demo mode.");
-            setUserId(null); 
-            setIsAuthReady(true);
-            return; 
-        }
-        
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                setUserId(user.uid);
-            } else {
-                setUserId(null);
-            }
-            setIsAuthReady(true);
-        });
-
-        return () => unsubscribe();
-    }, []);
-
-    // Auth Handlers
-    const signInWithGoogle = async () => {
-        if (!auth) return showSystemMessage("Authentication not available.");
-        try {
-            await signInWithPopup(auth, googleProvider);
-            showSystemMessage("Signed in with Google successfully!");
-        } catch (err) {
-            console.error(err);
-            showSystemMessage(`Sign-in failed: ${err.message.substring(0, 50)}...`);
-        }
-    };
-    
-    const signInWithGithub = async () => {
-        if (!auth) return showSystemMessage("Authentication not available.");
-        try {
-            await signInWithPopup(auth, githubProvider);
-            showSystemMessage("Signed in with GitHub successfully!");
-        } catch (err) {
-            console.error(err);
-            showSystemMessage(`Sign-in failed: ${err.message.substring(0, 50)}...`);
-        }
-    };
-    
-    const handleLogout = () => {
-        if (!auth) return showSystemMessage("Authentication not available.");
-        signOut(auth).then(() => {
-            showSystemMessage("Logged out successfully.");
-        }).catch(err => {
-            console.error(err);
-            showSystemMessage("Logout failed.");
-        });
-    };
+    // ... (rest of the hook logic)
 
     return {
         auth, 
@@ -110,6 +35,6 @@ export const useAuthAndFirebase = (showSystemMessage) => {
         signInWithGoogle,
         signInWithGithub,
         handleLogout,
-        appId
+        // appId, // ❌ REMOVED: No longer need to return the static ID here
     };
 };
