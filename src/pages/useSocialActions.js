@@ -1,32 +1,24 @@
-// pages/useSocialData.js
-import { useState, useEffect } from "react";
+// pages/useSocialActions.js
+import { useState } from "react";
 import { 
-  doc, 
-  setDoc, 
-  onSnapshot, 
+    doc, 
 // ... (other Firebase imports)
 } from 'firebase/firestore'; 
 // 👇 UPDATED: Import the static ID instead of the whole hook
 import { STATIC_APP_ID } from './useAuthAndFirebase'; 
 
-const INITIAL_VIDEOS = [
-  // ... (video data)
-];
-
-
-export const useSocialData = (isAuthReady, userId, db) => {
+export const useSocialActions = (db, userId, currentVideo, likes, showSystemMessage) => {
     // ❌ REMOVED: const { appId } = useAuthAndFirebase(() => {}); 
     // 👇 NEW: Use the statically imported value
     const appId = STATIC_APP_ID; 
 
-    const [videos, setVideos] = useState(INITIAL_VIDEOS);
+    const [commentInput, setCommentInput] = useState("");
+    const [chatInput, setChatInput] = useState("");
+    const [showComments, setShowComments] = useState(false);
+
     // ... (rest of the hook logic which uses appId)
 
     return {
-        videos, 
-        videoStats, 
-        likes, 
-        videoComments, 
-        chatMessages
+        // ... (return values)
     };
 };
