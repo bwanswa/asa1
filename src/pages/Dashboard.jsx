@@ -28,6 +28,7 @@ const Dashboard = () => {
     // --- 1. Custom Hooks for Logic and Data ---
     const { auth, db, userId, isAuthReady, signInWithGoogle, signInWithGithub, handleLogout } = useAuthAndFirebase(showSystemMessage);
     const { videos, videoStats, likes, videoComments, chatMessages } = useSocialData(isAuthReady, userId, db);
+    // 👇 The fix ensures this call matches the hook signature
     const { 
         index, 
         setIndex, 
