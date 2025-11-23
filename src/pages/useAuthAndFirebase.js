@@ -39,8 +39,10 @@ try {
 const googleProvider = new GoogleAuthProvider();
 const githubProvider = new GithubAuthProvider();
 
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'vercel-local-dev';
-const appId = rawAppId.split(/[\/\-]/)[0];
+// 🐛 FIX: Directly use the Project ID ('asa1db') since __app_id is undefined
+// This value is used in the Firestore paths (e.g., artifacts/asa1db/...)
+const rawAppId = 'asa1db'; 
+const appId = rawAppId; // No need to split since it's already clean
 
 export const useAuthAndFirebase = (showSystemMessage) => {
     const [isAuthReady, setIsAuthReady] = useState(false);
